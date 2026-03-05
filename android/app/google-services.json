@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "74033374187",
+    "project_id": "pulsebeat-8ec4e",
+    "storage_bucket": "pulsebeat-8ec4e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:74033374187:android:536c0693932c42434fefae",
+        "android_client_info": {
+          "package_name": "com.example.shity_songs_player"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "74033374187-cl82oc6m6l4f6knghn90su994rreep5k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.shity_songs_player",
+            "certificate_hash": "e8823da24dcab4406f7a17b9c3af7e9b1da73774"
+          }
+        },
+        {
+          "client_id": "74033374187-nhjuk2fue6qelblmfo1v8cmvabjju3s0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAH_iACE9_50pea9BqKcuEvix3jFgLD5Ok"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "74033374187-nhjuk2fue6qelblmfo1v8cmvabjju3s0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "74033374187-n6j0qk5aml5931p7mhbaabp1reb7lj0j.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.shitySongsPlayer"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
