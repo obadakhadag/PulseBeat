@@ -12,6 +12,40 @@ class FollowService {
   final AuthService _authService;
   final FirebaseFirestore _firestore;
 
+  Future<String> getFollowStatus({required String toUid}) async {
+    final String targetUid = toUid.trim();
+    final String? fromUid = _authService.currentUser?.uid;
+
+    if (fromUid == null || fromUid.isEmpty || targetUid.isEmpty) {
+      return 'follow';
+    }
+
+    if (fromUid == targetUid) {
+      return 'following';
+    }
+
+    final String docId = '${fromUid}_$targetUid';
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await _firestore
+        .collection('follow_requests')
+        .doc(docId)
+        .get();
+
+    if (!snapshot.exists) {
+      return 'follow';
+    }
+
+    final String status =
+        (snapshot.data()?['status'] as String?)?.toLowerCase() ?? '';
+    if (status == 'pending') {
+      return 'requested';
+    }
+    if (status == 'accepted') {
+      return 'following';
+    }
+
+    return 'follow';
+  }
+
   Future<void> sendFollowRequest({required String toUid}) async {
     final String targetUid = toUid.trim();
     final String? fromUid = _authService.currentUser?.uid;

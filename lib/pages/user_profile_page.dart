@@ -1,68 +1,55 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../controllers/auth_controller.dart';
-import '../routes/app_pages.dart';
+import '../controllers/follow_controller.dart';
 
-class ProfilePage extends GetView<AuthController> {
-  const ProfilePage({super.key});
+class UserProfilePage extends StatefulWidget {
+  const UserProfilePage({super.key});
 
-  Future<void> _editBio(
-    BuildContext context,
-    String uid,
-    String currentBio,
-  ) async {
-    final TextEditingController bioController = TextEditingController(
-      text: currentBio,
-    );
+  @override
+  State<UserProfilePage> createState() => _UserProfilePageState();
+}
 
-    final String? newBio = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit Bio'),
-          content: TextField(
-            controller: bioController,
-            maxLength: 160,
-            minLines: 2,
-            maxLines: 4,
-            decoration: const InputDecoration(hintText: 'Write your bio'),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () =>
-                  Navigator.of(context).pop(bioController.text.trim()),
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
+class _UserProfilePageState extends State<UserProfilePage> {
+  final AuthController _authController = Get.find<AuthController>();
+  final FollowController _followController = Get.find<FollowController>();
 
-    if (newBio == null) {
-      return;
+  late final String? _uid = _resolveUid();
+
+  String? _resolveUid() {
+    final dynamic args = Get.arguments;
+    if (args is String && args.trim().isNotEmpty) {
+      return args.trim();
     }
+    if (args is Map<String, dynamic>) {
+      final dynamic uidValue = args['uid'];
+      if (uidValue is String && uidValue.trim().isNotEmpty) {
+        return uidValue.trim();
+      }
+    }
+    final String? param = Get.parameters['uid'];
+    if (param != null && param.trim().isNotEmpty) {
+      return param.trim();
+    }
+    return null;
+  }
 
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update(
-        <String, dynamic>{'bio': newBio},
-      );
-    } catch (_) {
-      Get.snackbar('Error', 'Failed to update bio.');
+  @override
+  void initState() {
+    super.initState();
+    final String? uid = _uid;
+    if (uid != null && uid.isNotEmpty) {
+      _followController.loadFollowStatus(uid);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    final String? uid = _uid;
     if (uid == null || uid.isEmpty) {
-      return const Scaffold(body: Center(child: Text('Profile not found.')));
+      return const Scaffold(body: Center(child: Text('User not found.')));
     }
 
     return Scaffold(
@@ -71,27 +58,7 @@ class ProfilePage extends GetView<AuthController> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: Get.back,
         ),
-        title: const Text('Profile'),
-        actions: <Widget>[
-          IconButton(
-            onPressed: () => Get.toNamed(AppPages.search),
-            icon: const Icon(Icons.search_rounded),
-            tooltip: 'Search',
-          ),
-          Obx(() {
-            return IconButton(
-              onPressed: controller.isLoading.value ? null : controller.logout,
-              icon: controller.isLoading.value
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.logout_rounded),
-              tooltip: 'Logout',
-            );
-          }),
-        ],
+        title: const Text('User Profile'),
       ),
       body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
@@ -102,9 +69,8 @@ class ProfilePage extends GetView<AuthController> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
-
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('Profile not found.'));
+            return const Center(child: Text('User not found.'));
           }
 
           final Map<String, dynamic> data = Map<String, dynamic>.from(
@@ -118,14 +84,13 @@ class ProfilePage extends GetView<AuthController> {
               (data['username'] as String?)?.trim().isNotEmpty == true
               ? (data['username'] as String).trim()
               : 'unknown';
-          final String email = (data['email'] as String?) ?? '';
           final String photoUrl = (data['photoUrl'] as String?) ?? '';
           final String bio = (data['bio'] as String?)?.trim() ?? '';
           final int followersCount =
               (data['followersCount'] as num?)?.toInt() ?? 0;
           final int followingCount =
               (data['followingCount'] as num?)?.toInt() ?? 0;
-          final bool isPrivate = data['isPrivate'] == true;
+          final bool isOwnProfile = _authController.uid == uid;
 
           return ListView(
             padding: const EdgeInsets.all(24),
@@ -157,41 +122,32 @@ class ProfilePage extends GetView<AuthController> {
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
               ),
-              const SizedBox(height: 4),
-              Center(
-                child: Text(
-                  email,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      'Private Account',
-                      style: TextStyle(fontWeight: FontWeight.w600),
+              if (!isOwnProfile) ...<Widget>[
+                const SizedBox(height: 14),
+                Obx(() {
+                  final String status = _followController.statusFor(uid);
+                  final bool disabled =
+                      _followController.isSending.value ||
+                      status == 'requested' ||
+                      status == 'following';
+                  final String label = status == 'following'
+                      ? 'Following'
+                      : status == 'requested'
+                      ? 'Requested'
+                      : 'Follow';
+
+                  return SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: disabled
+                          ? null
+                          : () => _followController.followUser(uid),
+                      child: Text(label),
                     ),
-                  ),
-                  Switch.adaptive(
-                    value: isPrivate,
-                    onChanged: (value) async {
-                      try {
-                        await FirebaseFirestore.instance
-                            .collection('users')
-                            .doc(uid)
-                            .update(<String, dynamic>{'isPrivate': value});
-                      } catch (_) {
-                        Get.snackbar(
-                          'Error',
-                          'Failed to update privacy setting.',
-                        );
-                      }
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
+                  );
+                }),
+              ],
+              const SizedBox(height: 18),
               Row(
                 children: <Widget>[
                   Expanded(
@@ -210,22 +166,13 @@ class ProfilePage extends GetView<AuthController> {
                 ],
               ),
               const SizedBox(height: 18),
-              Row(
-                children: <Widget>[
-                  Text(
-                    'Bio',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => _editBio(context, uid, bio),
-                    icon: const Icon(Icons.edit_rounded),
-                    tooltip: 'Edit bio',
-                  ),
-                ],
+              Text(
+                'Bio',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
+              const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(

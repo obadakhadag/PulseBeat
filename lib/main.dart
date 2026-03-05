@@ -12,6 +12,7 @@ import 'controllers/follow_controller.dart';
 import 'controllers/home_controller.dart';
 import 'controllers/player_controller.dart';
 import 'controllers/settings_controller.dart';
+import 'controllers/search_controller.dart' as app_search;
 import 'core/constants/app_constants.dart';
 import 'core/themes/app_theme.dart';
 import 'data/providers/lyrics_api_provider.dart';
@@ -52,6 +53,10 @@ Future<void> main() async {
   );
   Get.put<FollowController>(
     FollowController(followService: Get.find<FollowService>()),
+    permanent: true,
+  );
+  Get.put<app_search.SearchController>(
+    app_search.SearchController(userService: Get.find<UserService>()),
     permanent: true,
   );
 

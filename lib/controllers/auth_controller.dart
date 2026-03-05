@@ -22,19 +22,17 @@ class AuthController extends GetxController {
   final Rxn<UserModel> userProfile = Rxn<UserModel>();
   final RxBool isLoading = false.obs;
   final RxBool isProfileLoading = false.obs;
+  final RxBool isUpdatingPrivacy = false.obs;
 
   StreamSubscription<User?>? _authSubscription;
 
   User? get currentUser => user.value;
-  String get displayName =>
-      userProfile.value?.displayName ??
-      user.value?.displayName ??
-      'No display name';
-  String get email => userProfile.value?.email ?? user.value?.email ?? '';
-  String get photoUrl =>
-      userProfile.value?.photoUrl ?? user.value?.photoURL ?? '';
+  String get displayName => userProfile.value?.displayName ?? 'No display name';
+  String get email => userProfile.value?.email ?? '';
+  String get photoUrl => userProfile.value?.photoUrl ?? '';
   String get username => userProfile.value?.username ?? '';
   String get bio => userProfile.value?.bio ?? '';
+  bool get isPrivate => userProfile.value?.isPrivate ?? false;
   int get followersCount => userProfile.value?.followersCount ?? 0;
   int get followingCount => userProfile.value?.followingCount ?? 0;
   String? get uid => user.value?.uid;
@@ -175,6 +173,26 @@ class AuthController extends GetxController {
           existing ?? await _userService.ensureUserProfile(firebaseUser!);
     } finally {
       isProfileLoading.value = false;
+    }
+  }
+
+  Future<UserModel?> loadProfileByUid(String userId) {
+    return _userService.getUserProfile(userId);
+  }
+
+  Future<void> updatePrivacy(bool isPrivate) async {
+    if (isUpdatingPrivacy.value) {
+      return;
+    }
+
+    isUpdatingPrivacy.value = true;
+    try {
+      await _userService.updatePrivacy(isPrivate);
+      await loadProfile();
+    } catch (_) {
+      Get.snackbar('Error', 'Failed to update privacy setting.');
+    } finally {
+      isUpdatingPrivacy.value = false;
     }
   }
 

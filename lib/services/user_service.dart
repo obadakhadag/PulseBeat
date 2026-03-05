@@ -55,8 +55,42 @@ class UserService {
     return UserModel.fromMap(data);
   }
 
+  Future<List<UserModel>> searchUsers(String query) async {
+    final String normalized = query.trim();
+    if (normalized.isEmpty) {
+      return const <UserModel>[];
+    }
+
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
+        .collection('users')
+        .orderBy('username')
+        .startAt(<String>[normalized])
+        .endAt(<String>['$normalized\uf8ff'])
+        .limit(20)
+        .get();
+
+    return snapshot.docs
+        .map((doc) {
+          final data = Map<String, dynamic>.from(doc.data());
+          data['uid'] = data['uid'] ?? doc.id;
+          return UserModel.fromMap(data);
+        })
+        .toList(growable: false);
+  }
+
   Future<void> updateProfile(String uid, Map<String, dynamic> data) {
     return _usersCollection.doc(uid).update(data);
+  }
+
+  Future<void> updatePrivacy(bool isPrivate) async {
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw StateError('No logged-in user found.');
+    }
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).update(
+      <String, dynamic>{'isPrivate': isPrivate},
+    );
   }
 
   Future<UserModel> ensureUserProfile(User firebaseUser) async {

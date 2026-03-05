@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 
 import '../pages/profile_page.dart';
+import '../pages/search_page.dart';
+import '../pages/user_profile_page.dart';
 import '../views/auth/login_screen.dart';
 import '../views/home/home_screen.dart';
 import '../views/player/player_screen.dart';
@@ -16,6 +18,8 @@ class AppPages {
   static const String player = '/player';
   static const String settings = '/settings';
   static const String profile = '/profile';
+  static const String userProfile = '/userProfile';
+  static const String search = '/search';
 
   static final List<GetPage<dynamic>> pages = <GetPage<dynamic>>[
     GetPage<dynamic>(name: splash, page: () => const SplashScreen()),
@@ -24,5 +28,7 @@ class AppPages {
     GetPage<dynamic>(name: player, page: () => const PlayerScreen()),
     GetPage<dynamic>(name: settings, page: () => const SettingsScreen()),
     GetPage<dynamic>(name: profile, page: () => const ProfilePage()),
+    GetPage<dynamic>(name: userProfile, page: () => const UserProfilePage()),
+    GetPage<dynamic>(name: search, page: () => const SearchPage()),
   ];
 }
