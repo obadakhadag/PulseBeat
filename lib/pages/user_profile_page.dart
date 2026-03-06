@@ -4,9 +4,12 @@ import 'package:get/get.dart';
 
 import '../controllers/auth_controller.dart';
 import '../controllers/follow_controller.dart';
+import 'followers_following_list_page.dart';
 
 class UserProfilePage extends StatefulWidget {
-  const UserProfilePage({super.key});
+  const UserProfilePage({super.key, this.uid});
+
+  final String? uid;
 
   @override
   State<UserProfilePage> createState() => _UserProfilePageState();
@@ -19,6 +22,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
   late final String? _uid = _resolveUid();
 
   String? _resolveUid() {
+    final String? constructorUid = widget.uid?.trim();
+    if (constructorUid != null && constructorUid.isNotEmpty) {
+      return constructorUid;
+    }
+
     final dynamic args = Get.arguments;
     if (args is String && args.trim().isNotEmpty) {
       return args.trim();
@@ -34,6 +42,25 @@ class _UserProfilePageState extends State<UserProfilePage> {
       return param.trim();
     }
     return null;
+  }
+
+  Future<void> _showFollowingMenu(String targetUid) async {
+    final String? action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: ListTile(
+            leading: const Icon(Icons.person_remove_rounded),
+            title: const Text('Unfollow'),
+            onTap: () => Navigator.of(context).pop('unfollow'),
+          ),
+        );
+      },
+    );
+
+    if (action == 'unfollow') {
+      await _followController.unfollowUser(targetUid);
+    }
   }
 
   @override
@@ -126,23 +153,38 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 const SizedBox(height: 14),
                 Obx(() {
                   final String status = _followController.statusFor(uid);
-                  final bool disabled =
-                      _followController.isSending.value ||
-                      status == 'requested' ||
-                      status == 'following';
-                  final String label = status == 'following'
-                      ? 'Following'
-                      : status == 'requested'
-                      ? 'Requested'
-                      : 'Follow';
+                  final bool isBusy = _followController.isSending.value;
+
+                  if (status == 'following') {
+                    return SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: isBusy
+                            ? null
+                            : () => _showFollowingMenu(uid),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        label: const Text('Following'),
+                      ),
+                    );
+                  }
+
+                  if (status == 'requested') {
+                    return const SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: null,
+                        child: Text('Requested'),
+                      ),
+                    );
+                  }
 
                   return SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: disabled
+                      onPressed: isBusy
                           ? null
                           : () => _followController.followUser(uid),
-                      child: Text(label),
+                      child: const Text('Follow'),
                     ),
                   );
                 }),
@@ -154,6 +196,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     child: _CounterCard(
                       label: 'Followers',
                       value: followersCount,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => FollowersListPage(profileUid: uid),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -161,6 +209,12 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     child: _CounterCard(
                       label: 'Following',
                       value: followingCount,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => FollowingListPage(profileUid: uid),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -193,14 +247,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
 }
 
 class _CounterCard extends StatelessWidget {
-  const _CounterCard({required this.label, required this.value});
+  const _CounterCard({required this.label, required this.value, this.onTap});
 
   final String label;
   final int value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final Widget content = Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -218,6 +273,16 @@ class _CounterCard extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
         ],
       ),
+    );
+
+    if (onTap == null) {
+      return content;
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: content,
     );
   }
 }

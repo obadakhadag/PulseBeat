@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import 'user_profile_page.dart';
+
 class FollowRequestsPage extends StatefulWidget {
   const FollowRequestsPage({super.key});
 
@@ -15,6 +17,18 @@ class _FollowRequestsPageState extends State<FollowRequestsPage> {
   final Set<String> _processingRequestIds = <String>{};
 
   String? get _currentUserUid => FirebaseAuth.instance.currentUser?.uid;
+
+  void _openUserProfile(String uid) {
+    final String trimmedUid = uid.trim();
+    if (trimmedUid.isEmpty) {
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => UserProfilePage(uid: trimmedUid)),
+    );
+  }
 
   Future<void> _acceptRequest({
     required String requestId,
@@ -179,35 +193,41 @@ class _FollowRequestsPageState extends State<FollowRequestsPage> {
                     ),
                     child: Row(
                       children: <Widget>[
-                        CircleAvatar(
-                          radius: 24,
-                          backgroundImage: photoUrl.isNotEmpty
-                              ? NetworkImage(photoUrl)
-                              : null,
-                          child: photoUrl.isEmpty
-                              ? const Icon(Icons.person_rounded)
-                              : null,
+                        GestureDetector(
+                          onTap: () => _openUserProfile(fromUid),
+                          child: CircleAvatar(
+                            radius: 24,
+                            backgroundImage: photoUrl.isNotEmpty
+                                ? NetworkImage(photoUrl)
+                                : null,
+                            child: photoUrl.isEmpty
+                                ? const Icon(Icons.person_rounded)
+                                : null,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '@$username',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ],
+                          child: GestureDetector(
+                            onTap: () => _openUserProfile(fromUid),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '@$username',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),

@@ -57,11 +57,49 @@ class FollowController extends GetxController {
 
     isSending.value = true;
     try {
-      await _followService.sendFollowRequest(toUid: targetUid);
-      _statusByUid[targetUid] = 'requested';
-      Get.snackbar('Success', 'Follow request sent.');
+      final String newStatus = await _followService.followUser(
+        toUid: targetUid,
+      );
+      _statusByUid[targetUid] = newStatus;
+      if (newStatus == 'following') {
+        Get.snackbar('Success', 'You are now following this user.');
+      } else if (newStatus == 'requested') {
+        Get.snackbar('Success', 'Follow request sent.');
+      }
     } catch (_) {
-      Get.snackbar('Error', 'Failed to send follow request.');
+      Get.snackbar('Error', 'Failed to follow user.');
+    } finally {
+      isSending.value = false;
+    }
+  }
+
+  Future<void> unfollowUser(String toUid) async {
+    final String targetUid = toUid.trim();
+    final String? fromUid = Get.find<AuthController>().uid;
+
+    if (targetUid.isEmpty) {
+      return;
+    }
+
+    if (fromUid == null || fromUid.isEmpty || fromUid == targetUid) {
+      return;
+    }
+
+    if (isSending.value) {
+      return;
+    }
+
+    if (statusFor(targetUid) != 'following') {
+      return;
+    }
+
+    isSending.value = true;
+    try {
+      await _followService.unfollowUser(toUid: targetUid);
+      _statusByUid[targetUid] = 'follow';
+      Get.snackbar('Success', 'Unfollowed user.');
+    } catch (_) {
+      Get.snackbar('Error', 'Failed to unfollow user.');
     } finally {
       isSending.value = false;
     }

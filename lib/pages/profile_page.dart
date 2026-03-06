@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
 import '../controllers/auth_controller.dart';
+import 'followers_following_list_page.dart';
 import '../routes/app_pages.dart';
 
 class ProfilePage extends GetView<AuthController> {
@@ -198,6 +199,12 @@ class ProfilePage extends GetView<AuthController> {
                     child: _CounterCard(
                       label: 'Followers',
                       value: followersCount,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => FollowersListPage(profileUid: uid),
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -205,6 +212,12 @@ class ProfilePage extends GetView<AuthController> {
                     child: _CounterCard(
                       label: 'Following',
                       value: followingCount,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => FollowingListPage(profileUid: uid),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -246,14 +259,15 @@ class ProfilePage extends GetView<AuthController> {
 }
 
 class _CounterCard extends StatelessWidget {
-  const _CounterCard({required this.label, required this.value});
+  const _CounterCard({required this.label, required this.value, this.onTap});
 
   final String label;
   final int value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final Widget content = Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -271,6 +285,16 @@ class _CounterCard extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.bodyMedium),
         ],
       ),
+    );
+
+    if (onTap == null) {
+      return content;
+    }
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: content,
     );
   }
 }
