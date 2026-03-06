@@ -5,6 +5,7 @@ import '../../controllers/home_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../core/utils/extensions.dart';
 import '../../core/utils/helpers.dart';
+import '../../pages/follow_requests_page.dart';
 import '../../routes/app_pages.dart';
 import '../../widgets/song_artwork.dart';
 import 'widgets/library_group_header.dart';
@@ -220,6 +221,16 @@ class _HeroHeader extends StatelessWidget {
                 ],
               ),
             ),
+            IconButton.filledTonal(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const FollowRequestsPage(),
+                ),
+              ),
+              icon: const Icon(Icons.person_add),
+            ),
+            const SizedBox(width: 8),
             IconButton.filledTonal(
               onPressed: () => Get.toNamed(AppPages.settings),
               icon: const Icon(Icons.tune_rounded),
