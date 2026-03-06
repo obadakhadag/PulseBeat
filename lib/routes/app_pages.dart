@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../pages/chat_page.dart';
 import '../pages/profile_page.dart';
 import '../pages/search_page.dart';
 import '../pages/user_profile_page.dart';
@@ -19,6 +20,7 @@ class AppPages {
   static const String settings = '/settings';
   static const String profile = '/profile';
   static const String userProfile = '/userProfile';
+  static const String chat = '/chat';
   static const String search = '/search';
 
   static final List<GetPage<dynamic>> pages = <GetPage<dynamic>>[
@@ -29,6 +31,7 @@ class AppPages {
     GetPage<dynamic>(name: settings, page: () => const SettingsScreen()),
     GetPage<dynamic>(name: profile, page: () => const ProfilePage()),
     GetPage<dynamic>(name: userProfile, page: () => const UserProfilePage()),
+    GetPage<dynamic>(name: chat, page: () => const ChatPage()),
     GetPage<dynamic>(name: search, page: () => const SearchPage()),
   ];
 }

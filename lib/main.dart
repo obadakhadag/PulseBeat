@@ -8,6 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 import 'controllers/auth_controller.dart';
+import 'controllers/chat_controller.dart';
 import 'controllers/follow_controller.dart';
 import 'controllers/home_controller.dart';
 import 'controllers/player_controller.dart';
@@ -21,6 +22,7 @@ import 'data/repositories/lyrics_repository.dart';
 import 'routes/app_pages.dart';
 import 'services/audio_player_service.dart';
 import 'services/auth_service.dart';
+import 'services/chat_service.dart';
 import 'services/follow_service.dart';
 import 'services/permissions_service.dart';
 import 'services/storage_service.dart';
@@ -39,6 +41,7 @@ Future<void> main() async {
   Get.put<StorageService>(storage, permanent: true);
   Get.put<AuthService>(AuthService(), permanent: true);
   Get.put<UserService>(UserService(), permanent: true);
+  Get.put<ChatService>(ChatService(), permanent: true);
   Get.put<FollowService>(
     FollowService(authService: Get.find<AuthService>()),
     permanent: true,
@@ -53,6 +56,10 @@ Future<void> main() async {
   );
   Get.put<FollowController>(
     FollowController(followService: Get.find<FollowService>()),
+    permanent: true,
+  );
+  Get.put<ChatController>(
+    ChatController(chatService: Get.find<ChatService>()),
     permanent: true,
   );
   Get.put<app_search.SearchController>(

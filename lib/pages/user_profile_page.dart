@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../controllers/auth_controller.dart';
+import '../controllers/chat_controller.dart';
 import '../controllers/follow_controller.dart';
 import 'followers_following_list_page.dart';
 
@@ -17,6 +18,7 @@ class UserProfilePage extends StatefulWidget {
 
 class _UserProfilePageState extends State<UserProfilePage> {
   final AuthController _authController = Get.find<AuthController>();
+  final ChatController _chatController = Get.find<ChatController>();
   final FollowController _followController = Get.find<FollowController>();
 
   late final String? _uid = _resolveUid();
@@ -185,6 +187,33 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           ? null
                           : () => _followController.followUser(uid),
                       child: const Text('Follow'),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 10),
+                Obx(() {
+                  final bool isOpeningChat =
+                      _chatController.isOpeningChat.value;
+
+                  return SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: isOpeningChat
+                          ? null
+                          : () => _chatController.openDirectChat(
+                              otherUid: uid,
+                              otherDisplayName: displayName,
+                              otherUsername: username,
+                              otherPhotoUrl: photoUrl,
+                            ),
+                      icon: isOpeningChat
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.chat_bubble_outline_rounded),
+                      label: const Text('Message'),
                     ),
                   );
                 }),

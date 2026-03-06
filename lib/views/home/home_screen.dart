@@ -5,6 +5,7 @@ import '../../controllers/home_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../core/utils/extensions.dart';
 import '../../core/utils/helpers.dart';
+import '../../pages/chat_list_page.dart';
 import '../../pages/follow_requests_page.dart';
 import '../../routes/app_pages.dart';
 import '../../widgets/song_artwork.dart';
@@ -221,6 +222,14 @@ class _HeroHeader extends StatelessWidget {
                 ],
               ),
             ),
+            IconButton.filledTonal(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const ChatListPage()),
+              ),
+              icon: const Icon(Icons.chat_bubble_outline),
+            ),
+            const SizedBox(width: 8),
             IconButton.filledTonal(
               onPressed: () => Navigator.push(
                 context,
