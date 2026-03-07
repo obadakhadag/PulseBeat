@@ -20,7 +20,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _openHome() async {
-    await Future<void>.delayed(const Duration(milliseconds: 140));
+    await Future<void>.delayed(const Duration(milliseconds: 14));
     if (!mounted) {
       return;
     }

@@ -258,14 +258,17 @@ class _ChatPageState extends State<ChatPage> {
 
     final int? currentSongId = _playerController.currentSong.value?.id;
     if (currentSongId == song.id) {
-      await _playerController.togglePlayback();
+      if (_playerController.isPlaying.value) {
+        await _playerController.pause();
+      } else {
+        await _playerController.play();
+      }
       return;
     }
 
     try {
-      // Stop/pause the currently playing track before playing another one.
-      if (_playerController.isPlaying.value) {
-        await _playerController.togglePlayback();
+      if (currentSongId != null) {
+        await _playerController.stop();
       }
 
       final List<SongModel> baseQueue = _homeController.songs.isNotEmpty
@@ -554,6 +557,247 @@ class _ChatPageState extends State<ChatPage> {
     return ClipRRect(borderRadius: BorderRadius.circular(10), child: fallback);
   }
 
+  String _formatDuration(Duration value) {
+    final Duration safe = value.isNegative ? Duration.zero : value;
+    final int hours = safe.inHours;
+    final int minutes = safe.inMinutes.remainder(60);
+    final int seconds = safe.inSeconds.remainder(60);
+
+    if (hours > 0) {
+      return '$hours:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${safe.inMinutes}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildSongPlaybackControls({
+    required BuildContext context,
+    required bool isMine,
+    required int songId,
+    required String songTitle,
+    required Duration fallbackDuration,
+  }) {
+    return Obx(() {
+      final bool isCurrentSong =
+          _playerController.currentSong.value?.id == songId;
+      final bool isPlayingThisSong =
+          isCurrentSong && _playerController.isPlaying.value;
+
+      if (!isCurrentSong) {
+        return _buildPlaybackBody(
+          context: context,
+          isMine: isMine,
+          songId: songId,
+          songTitle: songTitle,
+          isPlayingThisSong: isPlayingThisSong,
+          position: Duration.zero,
+          total: fallbackDuration,
+          canSeek: false,
+        );
+      }
+
+      return StreamBuilder<Duration?>(
+        stream: _playerController.durationStream,
+        initialData: _playerController.total.value,
+        builder: (context, durationSnapshot) {
+          final Duration streamTotal = durationSnapshot.data ?? Duration.zero;
+          final Duration total = streamTotal.inMilliseconds > 0
+              ? streamTotal
+              : fallbackDuration;
+
+          return StreamBuilder<Duration>(
+            stream: _playerController.positionStream,
+            initialData: _playerController.position.value,
+            builder: (context, positionSnapshot) {
+              final Duration rawPosition =
+                  positionSnapshot.data ?? Duration.zero;
+              final Duration position =
+                  total.inMilliseconds > 0 &&
+                      rawPosition.inMilliseconds > total.inMilliseconds
+                  ? total
+                  : rawPosition;
+
+              return _buildPlaybackBody(
+                context: context,
+                isMine: isMine,
+                songId: songId,
+                songTitle: songTitle,
+                isPlayingThisSong: isPlayingThisSong,
+                position: position,
+                total: total,
+                canSeek: total.inMilliseconds > 0,
+              );
+            },
+          );
+        },
+      );
+    });
+  }
+
+  Widget _buildPlaybackBody({
+    required BuildContext context,
+    required bool isMine,
+    required int songId,
+    required String songTitle,
+    required bool isPlayingThisSong,
+    required Duration position,
+    required Duration total,
+    required bool canSeek,
+  }) {
+    final Color activeColor = isMine
+        ? Theme.of(context).colorScheme.onPrimary
+        : Theme.of(context).colorScheme.primary;
+    final Color buttonBackground = isMine
+        ? Theme.of(context).colorScheme.onPrimary
+        : Theme.of(context).colorScheme.primary;
+    final Color buttonForeground = isMine
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.onPrimary;
+
+    final double max = total.inMilliseconds > 0
+        ? total.inMilliseconds.toDouble()
+        : 1.0;
+    final int clampedPosition = position.inMilliseconds.clamp(0, max.toInt());
+    final double sliderValue = clampedPosition.toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            IconButton.filled(
+              onPressed: songId <= 0
+                  ? null
+                  : () => _toggleSongPlayback(
+                      songId: songId,
+                      songTitle: songTitle,
+                    ),
+              style: IconButton.styleFrom(
+                backgroundColor: buttonBackground,
+                foregroundColor: buttonForeground,
+                minimumSize: const Size(36, 36),
+              ),
+              icon: Icon(
+                isPlayingThisSong
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: activeColor,
+                  inactiveTrackColor: activeColor.withValues(alpha: 0.30),
+                  thumbColor: activeColor,
+                  overlayColor: activeColor.withValues(alpha: 0.16),
+                  trackHeight: 2.5,
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                ),
+                child: Slider(
+                  min: 0,
+                  max: max,
+                  value: sliderValue,
+                  onChanged: songId <= 0 || !canSeek
+                      ? null
+                      : (double value) {
+                          _playerController.seek(
+                            Duration(milliseconds: value.toInt()),
+                          );
+                        },
+                ),
+              ),
+            ),
+          ],
+        ),
+        Text(
+          '${_formatDuration(position)} / ${_formatDuration(total)}',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: isMine
+                ? Theme.of(
+                    context,
+                  ).colorScheme.onPrimary.withValues(alpha: 0.85)
+                : Theme.of(context).textTheme.bodySmall?.color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSongMessageCard({
+    required BuildContext context,
+    required bool isMine,
+    required String coverUrl,
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+  }) {
+    final Duration fallbackDuration =
+        _homeController.findSongById(songId)?.duration ?? Duration.zero;
+
+    return Column(
+      crossAxisAlignment: isMine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            _buildSongCover(
+              context: context,
+              coverUrl: coverUrl,
+              songId: songId,
+              isMine: isMine,
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: isMine
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    songTitle.isEmpty ? 'Unknown song' : songTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: isMine
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    songArtist.isEmpty ? 'Unknown artist' : songArtist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isMine
+                          ? Theme.of(
+                              context,
+                            ).colorScheme.onPrimary.withValues(alpha: 0.82)
+                          : Theme.of(context).textTheme.bodySmall?.color,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _buildSongPlaybackControls(
+          context: context,
+          isMine: isMine,
+          songId: songId,
+          songTitle: songTitle,
+          fallbackDuration: fallbackDuration,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dynamic args = Get.arguments;
@@ -720,149 +964,13 @@ class _ChatPageState extends State<ChatPage> {
                                               : CrossAxisAlignment.start,
                                           children: <Widget>[
                                             if (isSongMessage)
-                                              Column(
-                                                crossAxisAlignment: isMine
-                                                    ? CrossAxisAlignment.end
-                                                    : CrossAxisAlignment.start,
-                                                children: <Widget>[
-                                                  Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: <Widget>[
-                                                      _buildSongCover(
-                                                        context: context,
-                                                        coverUrl: coverUrl,
-                                                        songId: songId,
-                                                        isMine: isMine,
-                                                      ),
-                                                      const SizedBox(width: 10),
-                                                      Flexible(
-                                                        child: Column(
-                                                          crossAxisAlignment:
-                                                              isMine
-                                                              ? CrossAxisAlignment
-                                                                    .end
-                                                              : CrossAxisAlignment
-                                                                    .start,
-                                                          children: <Widget>[
-                                                            Text(
-                                                              '\uD83C\uDFB5 ${songTitle.isEmpty ? 'Unknown song' : songTitle}',
-                                                              maxLines: 2,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                              style: TextStyle(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w700,
-                                                                color: isMine
-                                                                    ? Theme.of(
-                                                                        context,
-                                                                      ).colorScheme.onPrimary
-                                                                    : null,
-                                                              ),
-                                                            ),
-                                                            const SizedBox(
-                                                              height: 4,
-                                                            ),
-                                                            Text(
-                                                              songArtist.isEmpty
-                                                                  ? 'Unknown artist'
-                                                                  : songArtist,
-                                                              maxLines: 1,
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                              style: TextStyle(
-                                                                color: isMine
-                                                                    ? Theme.of(
-                                                                        context,
-                                                                      ).colorScheme.onPrimary.withValues(
-                                                                        alpha:
-                                                                            0.82,
-                                                                      )
-                                                                    : Theme.of(
-                                                                            context,
-                                                                          )
-                                                                          .textTheme
-                                                                          .bodySmall
-                                                                          ?.color,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(height: 10),
-                                                  Obx(() {
-                                                    final bool isCurrentSong =
-                                                        _playerController
-                                                            .currentSong
-                                                            .value
-                                                            ?.id ==
-                                                        songId;
-                                                    final bool
-                                                    isPlayingThisSong =
-                                                        isCurrentSong &&
-                                                        _playerController
-                                                            .isPlaying
-                                                            .value;
-
-                                                    return SizedBox(
-                                                      width: double.infinity,
-                                                      child: OutlinedButton.icon(
-                                                        onPressed: songId <= 0
-                                                            ? null
-                                                            : () => _toggleSongPlayback(
-                                                                songId: songId,
-                                                                songTitle:
-                                                                    songTitle,
-                                                              ),
-                                                        style: OutlinedButton.styleFrom(
-                                                          foregroundColor:
-                                                              isMine
-                                                              ? Theme.of(
-                                                                      context,
-                                                                    )
-                                                                    .colorScheme
-                                                                    .onPrimary
-                                                              : Theme.of(
-                                                                      context,
-                                                                    )
-                                                                    .colorScheme
-                                                                    .primary,
-                                                          side: BorderSide(
-                                                            color: isMine
-                                                                ? Theme.of(
-                                                                        context,
-                                                                      )
-                                                                      .colorScheme
-                                                                      .onPrimary
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.35,
-                                                                      )
-                                                                : Theme.of(
-                                                                    context,
-                                                                  ).dividerColor,
-                                                          ),
-                                                        ),
-                                                        icon: Icon(
-                                                          isPlayingThisSong
-                                                              ? Icons.pause
-                                                              : Icons
-                                                                    .play_arrow,
-                                                        ),
-                                                        label: Text(
-                                                          isPlayingThisSong
-                                                              ? 'Pause'
-                                                              : 'Play',
-                                                        ),
-                                                      ),
-                                                    );
-                                                  }),
-                                                ],
+                                              _buildSongMessageCard(
+                                                context: context,
+                                                isMine: isMine,
+                                                coverUrl: coverUrl,
+                                                songId: songId,
+                                                songTitle: songTitle,
+                                                songArtist: songArtist,
                                               )
                                             else
                                               Text(

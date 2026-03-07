@@ -20,6 +20,9 @@ class PlayerController extends GetxController {
   final LyricsRepository _lyricsRepository;
   final StorageService _storageService;
 
+  Stream<Duration> get positionStream => _audioService.positionStream;
+  Stream<Duration?> get durationStream => _audioService.durationStream;
+
   final RxList<SongModel> queue = <SongModel>[].obs;
   final Rxn<SongModel> currentSong = Rxn<SongModel>();
   final RxBool isPlaying = false.obs;
@@ -114,6 +117,9 @@ class PlayerController extends GetxController {
     await _audioService.play();
   }
 
+  Future<void> play() => _audioService.play();
+  Future<void> pause() => _audioService.pause();
+  Future<void> stop() => _audioService.stop();
   Future<void> seek(Duration value) => _audioService.seek(value);
   Future<void> next() => _audioService.skipToNext();
   Future<void> previous() => _audioService.skipToPrevious();
