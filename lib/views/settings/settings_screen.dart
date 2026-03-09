@@ -83,7 +83,7 @@ class SettingsScreen extends GetView<SettingsController> {
                     ),
                     trailing: const Icon(Icons.refresh_rounded),
                     onTap: () async {
-                      await homeController.loadLibrary();
+                      await homeController.loadLibrary(forceRefresh: true);
                       homeController.showRefreshedToast();
                     },
                   ),

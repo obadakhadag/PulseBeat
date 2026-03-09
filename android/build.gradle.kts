@@ -1,7 +1,3 @@
-import org.gradle.api.tasks.compile.JavaCompile
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
-
 allprojects {
     repositories {
         google()
@@ -22,17 +18,6 @@ subprojects {
 
 subprojects {
     project.evaluationDependsOn(":app")
-
-    tasks.withType<JavaCompile>().configureEach {
-        sourceCompatibility = JavaVersion.VERSION_1_8.toString()
-        targetCompatibility = JavaVersion.VERSION_1_8.toString()
-    }
-
-    tasks.withType<KotlinJvmCompile>().configureEach {
-        compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_1_8)
-        }
-    }
 }
 
 tasks.register<Delete>("clean") {

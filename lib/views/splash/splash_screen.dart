@@ -13,17 +13,21 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  bool _didNavigate = false;
+
   @override
   void initState() {
     super.initState();
-    _openHome();
+    _routeFromAuthState();
   }
 
-  Future<void> _openHome() async {
-    await Future<void>.delayed(const Duration(milliseconds: 14));
-    if (!mounted) {
+  Future<void> _routeFromAuthState() async {
+    await Future<void>.delayed(const Duration(milliseconds: 650));
+    if (!mounted || _didNavigate) {
       return;
     }
+
+    _didNavigate = true;
     final bool isLoggedIn = Get.find<AuthController>().isLoggedIn;
     Get.offNamed(isLoggedIn ? AppPages.home : AppPages.login);
   }
@@ -78,7 +82,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Scanning your device and getting the library ready.',
+                  'Preparing your session.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: Colors.white.withValues(alpha: 0.88),

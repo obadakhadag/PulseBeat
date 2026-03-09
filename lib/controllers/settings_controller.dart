@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -15,6 +17,12 @@ class SettingsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    unawaited(_loadSettings());
+  }
+
+  Future<void> _loadSettings() async {
+    await _storageService.ensureInitialized();
+
     final storedTheme = _storageService.getThemeMode();
     themeMode.value = switch (storedTheme) {
       'light' => ThemeMode.light,
@@ -25,7 +33,8 @@ class SettingsController extends GetxController {
     immersivePlayer.value = _storageService.getImmersivePlayer();
   }
 
-  void setThemeMode(ThemeMode value) {
+  Future<void> setThemeMode(ThemeMode value) async {
+    await _storageService.ensureInitialized();
     themeMode.value = value;
     _storageService.setThemeMode(switch (value) {
       ThemeMode.light => 'light',
@@ -34,12 +43,14 @@ class SettingsController extends GetxController {
     });
   }
 
-  void setShowLyrics(bool value) {
+  Future<void> setShowLyrics(bool value) async {
+    await _storageService.ensureInitialized();
     showLyrics.value = value;
     _storageService.setShowLyrics(value);
   }
 
-  void setImmersivePlayer(bool value) {
+  Future<void> setImmersivePlayer(bool value) async {
+    await _storageService.ensureInitialized();
     immersivePlayer.value = value;
     _storageService.setImmersivePlayer(value);
   }

@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:on_audio_query/on_audio_query.dart' as audio_query;
@@ -32,10 +35,12 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final HomeController _homeController = Get.find<HomeController>();
   final PlayerController _playerController = Get.find<PlayerController>();
   final audio_query.OnAudioQuery _audioQuery = audio_query.OnAudioQuery();
   final TextEditingController _messageController = TextEditingController();
+  final Map<int, SongModel?> _songLookupCache = <int, SongModel?>{};
   bool _isSending = false;
   String? _selectedMessageId;
 
@@ -111,6 +116,10 @@ class _ChatPageState extends State<ChatPage> {
       final DocumentReference<Map<String, dynamic>> chatRef = _firestore
           .collection('chats')
           .doc(chatId);
+      final String audioUrl = await _uploadSongAudio(
+        chatId: chatId,
+        song: song,
+      );
 
       await chatRef.collection('messages').add(<String, dynamic>{
         'senderUid': currentUserUid,
@@ -119,6 +128,7 @@ class _ChatPageState extends State<ChatPage> {
         'title': song.title,
         'artist': song.artist,
         'coverUrl': '',
+        'audioUrl': audioUrl,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -135,6 +145,34 @@ class _ChatPageState extends State<ChatPage> {
         });
       }
     }
+  }
+
+  Future<String> _uploadSongAudio({
+    required String chatId,
+    required SongModel song,
+  }) async {
+    final String filePath = song.filePath.trim();
+    if (filePath.isEmpty) {
+      throw StateError('Song file path is missing.');
+    }
+
+    final File audioFile = File(filePath);
+    if (!await audioFile.exists()) {
+      throw StateError('Song file does not exist.');
+    }
+
+    final Reference fileRef = _storage
+        .ref()
+        .child('songs')
+        .child(chatId)
+        .child('${song.id}.mp3');
+
+    await fileRef.putFile(
+      audioFile,
+      SettableMetadata(contentType: 'audio/mpeg'),
+    );
+
+    return fileRef.getDownloadURL();
   }
 
   Future<void> _openSongSelector({
@@ -216,8 +254,13 @@ class _ChatPageState extends State<ChatPage> {
       return null;
     }
 
+    if (_songLookupCache.containsKey(songId)) {
+      return _songLookupCache[songId];
+    }
+
     final SongModel? localSong = _homeController.findSongById(songId);
     if (localSong != null) {
+      _songLookupCache[songId] = localSong;
       return localSong;
     }
 
@@ -236,51 +279,117 @@ class _ChatPageState extends State<ChatPage> {
         }
 
         if ((rawSong.uri?.isNotEmpty ?? false) && (rawSong.isMusic ?? true)) {
-          return SongModel.fromAudioQuery(rawSong);
+          final SongModel song = SongModel.fromAudioQuery(rawSong);
+          _songLookupCache[songId] = song;
+          return song;
         }
       }
     } catch (_) {
+      _songLookupCache[songId] = null;
       return null;
     }
 
+    _songLookupCache[songId] = null;
     return null;
+  }
+
+  SongModel? _buildRemoteSongFromMessage({
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+    required String audioUrl,
+  }) {
+    final String trimmedUrl = audioUrl.trim();
+    if (trimmedUrl.isEmpty) {
+      return null;
+    }
+
+    final int resolvedId = songId > 0 ? songId : trimmedUrl.hashCode.abs();
+    return SongModel(
+      id: resolvedId,
+      title: songTitle.trim().isEmpty ? 'Unknown song' : songTitle.trim(),
+      artist: songArtist.trim().isEmpty ? 'Unknown artist' : songArtist.trim(),
+      album: 'Shared in chat',
+      duration: Duration.zero,
+      filePath: '',
+      uri: trimmedUrl,
+      artworkId: songId > 0 ? songId : 0,
+    );
   }
 
   Future<void> _toggleSongPlayback({
     required int songId,
     required String songTitle,
+    required String songArtist,
+    required String audioUrl,
   }) async {
-    final SongModel? song = await _findSongById(songId);
+    await _playSongForChat(
+      songId: songId,
+      songTitle: songTitle,
+      songArtist: songArtist,
+      audioUrl: audioUrl,
+      toggleIfCurrent: true,
+    );
+  }
+
+  Future<void> _playSongForChat({
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+    required String audioUrl,
+    required bool toggleIfCurrent,
+  }) async {
+    final SongModel? localSong = await _findSongById(songId);
+    final SongModel? song =
+        localSong ??
+        _buildRemoteSongFromMessage(
+          songId: songId,
+          songTitle: songTitle,
+          songArtist: songArtist,
+          audioUrl: audioUrl,
+        );
     if (song == null) {
-      Get.snackbar('Error', 'Song not found on device.');
+      Get.snackbar('Error', 'Song unavailable.');
       return;
     }
 
-    final int? currentSongId = _playerController.currentSong.value?.id;
-    if (currentSongId == song.id) {
-      if (_playerController.isPlaying.value) {
-        await _playerController.pause();
-      } else {
+    final SongModel? currentSong = _playerController.currentSong.value;
+    final bool isCurrentSong =
+        currentSong?.id == song.id && currentSong?.uri == song.uri;
+
+    if (isCurrentSong) {
+      if (toggleIfCurrent) {
+        if (_playerController.isPlaying.value) {
+          await _playerController.pause();
+        } else {
+          await _playerController.play();
+        }
+      } else if (!_playerController.isPlaying.value) {
         await _playerController.play();
       }
       return;
     }
 
     try {
+      final int? currentSongId = currentSong?.id;
       if (currentSongId != null) {
         await _playerController.stop();
       }
 
-      final List<SongModel> baseQueue = _homeController.songs.isNotEmpty
-          ? _homeController.songs.toList(growable: false)
-          : <SongModel>[song];
-
-      final bool queueContainsSong = baseQueue.any(
-        (SongModel item) => item.id == song.id,
-      );
-      final List<SongModel> queue = queueContainsSong
-          ? baseQueue
-          : <SongModel>[song, ...baseQueue];
+      final List<SongModel> queue;
+      if (localSong != null) {
+        final List<SongModel> baseQueue = _homeController.songs.isNotEmpty
+            ? _homeController.songs.toList(growable: false)
+            : <SongModel>[localSong];
+        final bool queueContainsSong = baseQueue.any(
+          (SongModel item) => item.id == localSong.id,
+        );
+        queue = queueContainsSong
+            ? baseQueue
+            : <SongModel>[localSong, ...baseQueue];
+      } else {
+        queue = <SongModel>[song];
+      }
 
       await _playerController.playFromQueue(queue, song);
     } catch (_) {
@@ -288,6 +397,75 @@ class _ChatPageState extends State<ChatPage> {
         'Error',
         'Failed to play ${songTitle.trim().isEmpty ? 'song' : songTitle}.',
       );
+    }
+  }
+
+  Future<void> _startListeningSession({
+    required String chatId,
+    required String currentUserUid,
+    required int songId,
+    required String title,
+    required String artist,
+    required String coverUrl,
+    required String audioUrl,
+  }) async {
+    final String trimmedAudioUrl = audioUrl.trim();
+    if (songId <= 0 && trimmedAudioUrl.isEmpty) {
+      Get.snackbar('Error', 'Song is not available for session.');
+      return;
+    }
+    final int resolvedSongId = songId > 0 ? songId : trimmedAudioUrl.hashCode.abs();
+
+    try {
+      final DocumentReference<Map<String, dynamic>> sessionRef = _firestore
+          .collection('shared_sessions')
+          .doc();
+      await sessionRef.set(<String, dynamic>{
+        'sessionId': sessionRef.id,
+        'chatId': chatId,
+        'songId': resolvedSongId,
+        'title': title.trim().isEmpty ? 'Unknown song' : title.trim(),
+        'artist': artist.trim().isEmpty ? 'Unknown artist' : artist.trim(),
+        'coverUrl': coverUrl.trim(),
+        'audioUrl': trimmedAudioUrl,
+        'hostUid': currentUserUid,
+        'participants': <String>[currentUserUid],
+        'isActive': true,
+        'startedAt': FieldValue.serverTimestamp(),
+      });
+      Get.snackbar('Listening session', 'Session started.');
+    } catch (_) {
+      Get.snackbar('Error', 'Failed to start listening session.');
+    }
+  }
+
+  Future<void> _joinListeningSession({
+    required String sessionId,
+    required String currentUserUid,
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+    required String audioUrl,
+  }) async {
+    if (sessionId.trim().isEmpty) {
+      return;
+    }
+
+    try {
+      await _firestore.collection('shared_sessions').doc(sessionId).update(
+        <String, dynamic>{
+          'participants': FieldValue.arrayUnion(<String>[currentUserUid]),
+        },
+      );
+      await _playSongForChat(
+        songId: songId,
+        songTitle: songTitle,
+        songArtist: songArtist,
+        audioUrl: audioUrl,
+        toggleIfCurrent: false,
+      );
+    } catch (_) {
+      Get.snackbar('Error', 'Failed to join listening session.');
     }
   }
 
@@ -354,7 +532,6 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     try {
-      await Future<void>.delayed(Duration.zero);
       await _firestore
           .collection('chats')
           .doc(chatId)
@@ -574,11 +751,18 @@ class _ChatPageState extends State<ChatPage> {
     required bool isMine,
     required int songId,
     required String songTitle,
+    required String songArtist,
+    required String audioUrl,
     required Duration fallbackDuration,
+    required Color messageTextColor,
   }) {
     return Obx(() {
+      final SongModel? currentSong = _playerController.currentSong.value;
+      final String trimmedAudioUrl = audioUrl.trim();
       final bool isCurrentSong =
-          _playerController.currentSong.value?.id == songId;
+          currentSong != null &&
+          ((songId > 0 && currentSong.id == songId) ||
+              (trimmedAudioUrl.isNotEmpty && currentSong.uri == trimmedAudioUrl));
       final bool isPlayingThisSong =
           isCurrentSong && _playerController.isPlaying.value;
 
@@ -588,10 +772,13 @@ class _ChatPageState extends State<ChatPage> {
           isMine: isMine,
           songId: songId,
           songTitle: songTitle,
+          songArtist: songArtist,
+          audioUrl: audioUrl,
           isPlayingThisSong: isPlayingThisSong,
           position: Duration.zero,
           total: fallbackDuration,
           canSeek: false,
+          messageTextColor: messageTextColor,
         );
       }
 
@@ -621,10 +808,13 @@ class _ChatPageState extends State<ChatPage> {
                 isMine: isMine,
                 songId: songId,
                 songTitle: songTitle,
+                songArtist: songArtist,
+                audioUrl: audioUrl,
                 isPlayingThisSong: isPlayingThisSong,
                 position: position,
                 total: total,
                 canSeek: total.inMilliseconds > 0,
+                messageTextColor: messageTextColor,
               );
             },
           );
@@ -638,10 +828,13 @@ class _ChatPageState extends State<ChatPage> {
     required bool isMine,
     required int songId,
     required String songTitle,
+    required String songArtist,
+    required String audioUrl,
     required bool isPlayingThisSong,
     required Duration position,
     required Duration total,
     required bool canSeek,
+    required Color messageTextColor,
   }) {
     final Color activeColor = isMine
         ? Theme.of(context).colorScheme.onPrimary
@@ -658,6 +851,7 @@ class _ChatPageState extends State<ChatPage> {
         : 1.0;
     final int clampedPosition = position.inMilliseconds.clamp(0, max.toInt());
     final double sliderValue = clampedPosition.toDouble();
+    final bool canPlay = songId > 0 || audioUrl.trim().isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -665,11 +859,13 @@ class _ChatPageState extends State<ChatPage> {
         Row(
           children: <Widget>[
             IconButton.filled(
-              onPressed: songId <= 0
+              onPressed: !canPlay
                   ? null
                   : () => _toggleSongPlayback(
                       songId: songId,
                       songTitle: songTitle,
+                      songArtist: songArtist,
+                      audioUrl: audioUrl,
                     ),
               style: IconButton.styleFrom(
                 backgroundColor: buttonBackground,
@@ -714,11 +910,7 @@ class _ChatPageState extends State<ChatPage> {
         Text(
           '${_formatDuration(position)} / ${_formatDuration(total)}',
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: isMine
-                ? Theme.of(
-                    context,
-                  ).colorScheme.onPrimary.withValues(alpha: 0.85)
-                : Theme.of(context).textTheme.bodySmall?.color,
+            color: messageTextColor.withValues(alpha: 0.85),
           ),
         ),
       ],
@@ -727,11 +919,15 @@ class _ChatPageState extends State<ChatPage> {
 
   Widget _buildSongMessageCard({
     required BuildContext context,
+    required String chatId,
+    required String currentUserUid,
     required bool isMine,
     required String coverUrl,
+    required String audioUrl,
     required int songId,
     required String songTitle,
     required String songArtist,
+    required Color messageTextColor,
   }) {
     final Duration fallbackDuration =
         _homeController.findSongById(songId)?.duration ?? Duration.zero;
@@ -763,9 +959,7 @@ class _ChatPageState extends State<ChatPage> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: isMine
-                          ? Theme.of(context).colorScheme.onPrimary
-                          : null,
+                      color: messageTextColor,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -774,11 +968,7 @@ class _ChatPageState extends State<ChatPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: isMine
-                          ? Theme.of(
-                              context,
-                            ).colorScheme.onPrimary.withValues(alpha: 0.82)
-                          : Theme.of(context).textTheme.bodySmall?.color,
+                      color: messageTextColor.withValues(alpha: 0.82),
                     ),
                   ),
                 ],
@@ -792,9 +982,135 @@ class _ChatPageState extends State<ChatPage> {
           isMine: isMine,
           songId: songId,
           songTitle: songTitle,
+          songArtist: songArtist,
+          audioUrl: audioUrl,
           fallbackDuration: fallbackDuration,
+          messageTextColor: messageTextColor,
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: songId <= 0 && audioUrl.trim().isEmpty
+                ? null
+                : () => _startListeningSession(
+                    chatId: chatId,
+                    currentUserUid: currentUserUid,
+                    songId: songId,
+                    title: songTitle,
+                    artist: songArtist,
+                    coverUrl: coverUrl,
+                    audioUrl: audioUrl,
+                  ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: isMine
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.primary,
+              side: BorderSide(
+                color: isMine
+                    ? Theme.of(
+                        context,
+                      ).colorScheme.onPrimary.withValues(alpha: 0.35)
+                    : Theme.of(context).dividerColor,
+              ),
+            ),
+            icon: const Icon(Icons.headphones_rounded),
+            label: const Text('Listen Together'),
+          ),
         ),
       ],
+    );
+  }
+
+  Widget _buildActiveSessionBanner({
+    required BuildContext context,
+    required String chatId,
+    required String currentUserUid,
+  }) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _firestore
+          .collection('shared_sessions')
+          .where('chatId', isEqualTo: chatId)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
+            snapshot.data?.docs ??
+            <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+        if (docs.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final QueryDocumentSnapshot<Map<String, dynamic>> doc = docs.first;
+        final Map<String, dynamic> data = doc.data();
+        final String sessionId =
+            (data['sessionId'] as String?)?.trim().isNotEmpty == true
+            ? (data['sessionId'] as String).trim()
+            : doc.id;
+        final String title = (data['title'] as String?)?.trim() ?? '';
+        final String artist = (data['artist'] as String?)?.trim() ?? '';
+        final String audioUrl = (data['audioUrl'] as String?)?.trim() ?? '';
+        final int songId = (data['songId'] as num?)?.toInt() ?? 0;
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.35),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                '\uD83C\uDFA7 Listening together',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                title.isEmpty ? 'Unknown song' : title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                artist.isEmpty ? 'Unknown artist' : artist,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton(
+                  onPressed: songId <= 0
+                          && audioUrl.isEmpty
+                      ? null
+                      : () => _joinListeningSession(
+                          sessionId: sessionId,
+                          currentUserUid: currentUserUid,
+                          songId: songId,
+                          songTitle: title,
+                          songArtist: artist,
+                          audioUrl: audioUrl,
+                        ),
+                  child: const Text('Join Listening'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -853,13 +1169,18 @@ class _ChatPageState extends State<ChatPage> {
           ? const Center(child: Text('Chat unavailable.'))
           : Column(
               children: <Widget>[
+                _buildActiveSessionBanner(
+                  context: context,
+                  chatId: resolvedChatId,
+                  currentUserUid: currentUserUid,
+                ),
                 Expanded(
                   child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                     stream: _firestore
                         .collection('chats')
                         .doc(resolvedChatId)
                         .collection('messages')
-                        .orderBy('createdAt', descending: false)
+                        .orderBy('createdAt')
                         .snapshots(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -894,6 +1215,8 @@ class _ChatPageState extends State<ChatPage> {
                               (data['artist'] as String?)?.trim() ?? '';
                           final String coverUrl =
                               (data['coverUrl'] as String?)?.trim() ?? '';
+                          final String audioUrl =
+                              (data['audioUrl'] as String?)?.trim() ?? '';
                           final int songId =
                               (data['songId'] as num?)?.toInt() ?? 0;
                           final bool isSongMessage = messageType == 'song';
@@ -903,6 +1226,16 @@ class _ChatPageState extends State<ChatPage> {
                           }
 
                           final bool isMine = senderUid == currentUserUid;
+                          final ThemeData theme = Theme.of(context);
+                          final Color myBubbleColor =
+                              theme.colorScheme.primary;
+                          const Color otherBubbleColor = Color(0xFFF1F1F1);
+                          final Color bubbleColor = isMine
+                              ? myBubbleColor
+                              : otherBubbleColor;
+                          final Color bubbleTextColor = isMine
+                              ? theme.colorScheme.onPrimary
+                              : Colors.black87;
                           final bool isEdited = data['edited'] == true;
                           final bool canEdit = isMine && !isSongMessage;
                           final Map<String, dynamic> reactionMap =
@@ -949,11 +1282,7 @@ class _ChatPageState extends State<ChatPage> {
                                           vertical: 10,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: isMine
-                                              ? Theme.of(
-                                                  context,
-                                                ).colorScheme.primary
-                                              : Theme.of(context).cardColor,
+                                          color: bubbleColor,
                                           borderRadius: BorderRadius.circular(
                                             14,
                                           ),
@@ -966,21 +1295,22 @@ class _ChatPageState extends State<ChatPage> {
                                             if (isSongMessage)
                                               _buildSongMessageCard(
                                                 context: context,
+                                                chatId: resolvedChatId,
+                                                currentUserUid: currentUserUid,
                                                 isMine: isMine,
                                                 coverUrl: coverUrl,
+                                                audioUrl: audioUrl,
                                                 songId: songId,
                                                 songTitle: songTitle,
                                                 songArtist: songArtist,
+                                                messageTextColor:
+                                                    bubbleTextColor,
                                               )
                                             else
                                               Text(
                                                 text,
                                                 style: TextStyle(
-                                                  color: isMine
-                                                      ? Theme.of(
-                                                          context,
-                                                        ).colorScheme.onPrimary
-                                                      : null,
+                                                  color: bubbleTextColor,
                                                 ),
                                               ),
                                             if (!isSongMessage &&
@@ -992,17 +1322,10 @@ class _ChatPageState extends State<ChatPage> {
                                                     .textTheme
                                                     .labelSmall
                                                     ?.copyWith(
-                                                      color: isMine
-                                                          ? Theme.of(context)
-                                                                .colorScheme
-                                                                .onPrimary
-                                                                .withValues(
-                                                                  alpha: 0.75,
-                                                                )
-                                                          : Theme.of(context)
-                                                                .textTheme
-                                                                .bodySmall
-                                                                ?.color,
+                                                      color: bubbleTextColor
+                                                          .withValues(
+                                                            alpha: 0.75,
+                                                          ),
                                                     ),
                                               ),
                                             ],

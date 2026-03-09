@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -42,6 +44,8 @@ class PlayerController extends GetxController {
   @override
   Future<void> onInit() async {
     super.onInit();
+    await _storageService.ensureInitialized();
+
     showLyrics.value = _storageService.getShowLyrics();
     playCounts.addAll(_storageService.getPlayCounts());
     await _audioService.init();
@@ -150,7 +154,7 @@ class PlayerController extends GetxController {
 
   void setShowLyrics(bool value) {
     showLyrics.value = value;
-    _storageService.setShowLyrics(value);
+    unawaited(_persistShowLyrics(value));
     final song = currentSong.value;
     if (value && song != null) {
       loadLyrics(song);
@@ -185,5 +189,10 @@ class PlayerController extends GetxController {
     playCounts[songId] = (playCounts[songId] ?? 0) + 1;
     _lastCountedSongId = songId;
     _storageService.setPlayCounts(playCounts);
+  }
+
+  Future<void> _persistShowLyrics(bool value) async {
+    await _storageService.ensureInitialized();
+    _storageService.setShowLyrics(value);
   }
 }

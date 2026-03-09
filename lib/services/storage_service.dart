@@ -3,32 +3,61 @@ import 'package:get_storage/get_storage.dart';
 import '../core/constants/app_constants.dart';
 
 class StorageService {
-  StorageService(this._box);
+  StorageService(this._boxName);
 
-  final GetStorage _box;
+  final String _boxName;
+  GetStorage? _box;
+  Future<void>? _initialization;
+
+  Future<void> ensureInitialized() {
+    _initialization ??= _initialize();
+    return _initialization!;
+  }
+
+  Future<void> _initialize() async {
+    await GetStorage.init(_boxName);
+    _box = GetStorage(_boxName);
+  }
+
+  GetStorage? get _maybeBox => _box;
 
   Set<int> getFavoriteIds() {
-    return (_box.read<List<dynamic>>(AppConstants.favoritesKey) ?? <dynamic>[])
+    final GetStorage? box = _maybeBox;
+    if (box == null) {
+      return <int>{};
+    }
+
+    return (box.read<List<dynamic>>(AppConstants.favoritesKey) ?? <dynamic>[])
         .map((dynamic item) => item as int)
         .toSet();
   }
 
   void setFavoriteIds(Set<int> ids) {
-    _box.write(AppConstants.favoritesKey, ids.toList(growable: false));
+    _maybeBox?.write(AppConstants.favoritesKey, ids.toList(growable: false));
   }
 
   List<int> getRecentIds() {
-    return (_box.read<List<dynamic>>(AppConstants.recentKey) ?? <dynamic>[])
+    final GetStorage? box = _maybeBox;
+    if (box == null) {
+      return const <int>[];
+    }
+
+    return (box.read<List<dynamic>>(AppConstants.recentKey) ?? <dynamic>[])
         .map((dynamic item) => item as int)
         .toList(growable: false);
   }
 
   void setRecentIds(List<int> ids) {
-    _box.write(AppConstants.recentKey, ids);
+    _maybeBox?.write(AppConstants.recentKey, ids);
   }
 
   Map<int, int> getPlayCounts() {
-    final raw = _box.read<dynamic>(AppConstants.playCountsKey);
+    final GetStorage? box = _maybeBox;
+    if (box == null) {
+      return <int, int>{};
+    }
+
+    final raw = box.read<dynamic>(AppConstants.playCountsKey);
     if (raw is! Map<dynamic, dynamic>) {
       return <int, int>{};
     }
@@ -49,7 +78,7 @@ class StorageService {
   }
 
   void setPlayCounts(Map<int, int> values) {
-    _box.write(
+    _maybeBox?.write(
       AppConstants.playCountsKey,
       values.map(
         (int key, int value) => MapEntry<String, int>(key.toString(), value),
@@ -57,36 +86,38 @@ class StorageService {
     );
   }
 
-  String getSortOrder() => _box.read<String>(AppConstants.sortKey) ?? 'newest';
+  String getSortOrder() =>
+      _maybeBox?.read<String>(AppConstants.sortKey) ?? 'newest';
 
   void setSortOrder(String value) {
-    _box.write(AppConstants.sortKey, value);
+    _maybeBox?.write(AppConstants.sortKey, value);
   }
 
   String getLibraryGroup() =>
-      _box.read<String>(AppConstants.groupKey) ?? 'folder';
+      _maybeBox?.read<String>(AppConstants.groupKey) ?? 'folder';
 
   void setLibraryGroup(String value) {
-    _box.write(AppConstants.groupKey, value);
+    _maybeBox?.write(AppConstants.groupKey, value);
   }
 
-  bool getShowLyrics() => _box.read<bool>(AppConstants.showLyricsKey) ?? true;
+  bool getShowLyrics() =>
+      _maybeBox?.read<bool>(AppConstants.showLyricsKey) ?? true;
 
   void setShowLyrics(bool value) {
-    _box.write(AppConstants.showLyricsKey, value);
+    _maybeBox?.write(AppConstants.showLyricsKey, value);
   }
 
   bool getImmersivePlayer() =>
-      _box.read<bool>(AppConstants.immersivePlayerKey) ?? true;
+      _maybeBox?.read<bool>(AppConstants.immersivePlayerKey) ?? true;
 
   void setImmersivePlayer(bool value) {
-    _box.write(AppConstants.immersivePlayerKey, value);
+    _maybeBox?.write(AppConstants.immersivePlayerKey, value);
   }
 
   String getThemeMode() =>
-      _box.read<String>(AppConstants.themeModeKey) ?? 'dark';
+      _maybeBox?.read<String>(AppConstants.themeModeKey) ?? 'dark';
 
   void setThemeMode(String value) {
-    _box.write(AppConstants.themeModeKey, value);
+    _maybeBox?.write(AppConstants.themeModeKey, value);
   }
 }

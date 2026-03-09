@@ -6,8 +6,13 @@ class AudioRepository {
   AudioRepository(this._audioQuery);
 
   final audio_query.OnAudioQuery _audioQuery;
+  List<SongModel>? _cachedSongs;
 
-  Future<List<SongModel>> loadDeviceSongs() async {
+  Future<List<SongModel>> loadDeviceSongs({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedSongs != null) {
+      return List<SongModel>.unmodifiable(_cachedSongs!);
+    }
+
     final songs = await _audioQuery.querySongs(
       sortType: audio_query.SongSortType.DATE_ADDED,
       orderType: audio_query.OrderType.DESC_OR_GREATER,
@@ -15,11 +20,13 @@ class AudioRepository {
       ignoreCase: true,
     );
 
-    return songs
+    _cachedSongs = songs
         .where(
           (song) => (song.isMusic ?? true) && (song.uri?.isNotEmpty ?? false),
         )
         .map(SongModel.fromAudioQuery)
         .toList(growable: false);
+
+    return List<SongModel>.unmodifiable(_cachedSongs!);
   }
 }

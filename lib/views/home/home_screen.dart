@@ -36,7 +36,7 @@ class HomeScreen extends GetView<HomeController> {
         child: SafeArea(
           child: RefreshIndicator(
             onRefresh: () async {
-              await controller.loadLibrary();
+              await controller.loadLibrary(forceRefresh: true);
               controller.showRefreshedToast();
             },
             child: CustomScrollView(
@@ -50,13 +50,17 @@ class HomeScreen extends GetView<HomeController> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
                   sliver: SliverToBoxAdapter(
-                    child: _HeroHeader(playerController: playerController),
+                    child: RepaintBoundary(
+                      child: _HeroHeader(playerController: playerController),
+                    ),
                   ),
                 ),
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                   sliver: SliverToBoxAdapter(
-                    child: _LibrarySnapshot(controller: controller),
+                    child: RepaintBoundary(
+                      child: _LibrarySnapshot(controller: controller),
+                    ),
                   ),
                 ),
                 SliverPadding(
@@ -74,7 +78,9 @@ class HomeScreen extends GetView<HomeController> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                   sliver: SliverToBoxAdapter(
-                    child: _ViewModeCard(controller: controller),
+                    child: RepaintBoundary(
+                      child: _ViewModeCard(controller: controller),
+                    ),
                   ),
                 ),
                 _LibraryContent(controller: controller),
@@ -119,63 +125,65 @@ class HomeScreen extends GetView<HomeController> {
                   borderRadius: BorderRadius.circular(26),
                   boxShadow: AppHelpers.glowShadows(context),
                 ),
-                child: Row(
-                  children: <Widget>[
-                    SongArtwork(
-                      songId: song.artworkId,
-                      width: 52,
-                      height: 52,
-                      borderRadius: BorderRadius.circular(18),
-                      size: 128,
-                      quality: 45,
-                      fallback: Container(
+                child: RepaintBoundary(
+                  child: Row(
+                    children: <Widget>[
+                      SongArtwork(
+                        songId: song.artworkId,
                         width: 52,
                         height: 52,
-                        color: context.colors.primary.withValues(alpha: 0.18),
-                        child: const Icon(Icons.graphic_eq_rounded),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            song.title.ellipsis(24),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
-                          Text(
-                            song.artist.fallbackArtist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: playerController.previous,
-                      icon: const Icon(Icons.skip_previous_rounded),
-                    ),
-                    IconButton(
-                      onPressed: playerController.togglePlayback,
-                      icon: Obx(
-                        () => Icon(
-                          playerController.isPlaying.value
-                              ? Icons.pause_circle_filled_rounded
-                              : Icons.play_circle_fill_rounded,
+                        borderRadius: BorderRadius.circular(18),
+                        size: 128,
+                        quality: 45,
+                        fallback: Container(
+                          width: 52,
+                          height: 52,
+                          color: context.colors.primary.withValues(alpha: 0.18),
+                          child: const Icon(Icons.graphic_eq_rounded),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: playerController.next,
-                      icon: const Icon(Icons.skip_next_rounded),
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              song.title.ellipsis(24),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                            Text(
+                              song.artist.fallbackArtist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: playerController.previous,
+                        icon: const Icon(Icons.skip_previous_rounded),
+                      ),
+                      IconButton(
+                        onPressed: playerController.togglePlayback,
+                        icon: Obx(
+                          () => Icon(
+                            playerController.isPlaying.value
+                                ? Icons.pause_circle_filled_rounded
+                                : Icons.play_circle_fill_rounded,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: playerController.next,
+                        icon: const Icon(Icons.skip_next_rounded),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -586,7 +594,9 @@ class _LibraryContent extends StatelessWidget {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
               sliver: SliverToBoxAdapter(
-                child: _FeaturedRail(controller: controller),
+                child: RepaintBoundary(
+                  child: _FeaturedRail(controller: controller),
+                ),
               ),
             ),
           SliverPadding(
@@ -664,53 +674,60 @@ class _FeaturedRail extends StatelessWidget {
         const SizedBox(height: 12),
         SizedBox(
           height: 152,
-          child: ListView.separated(
+          child: ListView.builder(
+            cacheExtent: 320,
             scrollDirection: Axis.horizontal,
+            itemCount: items.length,
             itemBuilder: (BuildContext context, int index) {
               final song = items[index];
-              return GestureDetector(
-                onTap: () => controller.playSong(song),
-                child: Container(
-                  width: 240,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    gradient: AppHelpers.songGradient(
-                      seed: song.id,
-                      brightness: Theme.of(context).brightness,
+              return Padding(
+                padding: EdgeInsets.only(right: index == items.length - 1 ? 0 : 12),
+                child: GestureDetector(
+                  onTap: () => controller.playSong(song),
+                  child: Container(
+                    width: 240,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: AppHelpers.songGradient(
+                        seed: song.id,
+                        brightness: Theme.of(context).brightness,
+                      ),
+                      borderRadius: BorderRadius.circular(28),
                     ),
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: <Widget>[
-                      Text(
-                        song.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: <Widget>[
+                        Text(
+                          song.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleLarge?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isMostPlayed
-                            ? '${song.artist.fallbackArtist} - ${controller.playCountLabel(song.id)}'
-                            : song.artist.fallbackArtist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.88),
+                        const SizedBox(height: 6),
+                        Text(
+                          isMostPlayed
+                              ? '${song.artist.fallbackArtist} - ${controller.playCountLabel(song.id)}'
+                              : song.artist.fallbackArtist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodyMedium?.copyWith(
+                            color: Colors.white.withValues(alpha: 0.88),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
             },
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemCount: items.length,
           ),
         ),
       ],

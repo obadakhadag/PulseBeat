@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
@@ -67,10 +69,12 @@ class HomeController extends GetxController {
   final RxList<LibraryEntry> libraryEntries = <LibraryEntry>[].obs;
   final RxBool showScrollToTop = false.obs;
   final ScrollController scrollController = ScrollController();
+  bool _didRequestInitialLibraryLoad = false;
 
   @override
   Future<void> onInit() async {
     super.onInit();
+    await _storageService.ensureInitialized();
     scrollController.addListener(_handleScroll);
     favoriteIds.addAll(_storageService.getFavoriteIds());
     recentIds.assignAll(_storageService.getRecentIds());
@@ -92,20 +96,43 @@ class HomeController extends GetxController {
       group,
       section,
     ], (_) => _applyFilters());
-    await loadLibrary();
   }
 
-  Future<void> loadLibrary() async {
+  @override
+  void onReady() {
+    super.onReady();
+    if (_didRequestInitialLibraryLoad) {
+      return;
+    }
+    _didRequestInitialLibraryLoad = true;
+    unawaited(loadLibrary());
+  }
+
+  Future<void> loadLibrary({bool forceRefresh = false}) async {
+    if (isLoading.value) {
+      return;
+    }
+    if (!forceRefresh && songs.isNotEmpty) {
+      return;
+    }
+
     isLoading.value = true;
-    permissionGranted.value = await _permissionsService.requestAudioAccess();
+    final bool hasPermission = permissionGranted.value
+        ? true
+        : await _permissionsService.requestAudioAccess();
+    permissionGranted.value = hasPermission;
     if (!permissionGranted.value) {
       isLoading.value = false;
       return;
     }
 
     try {
-      final results = await _audioRepository.loadDeviceSongs();
-      songs.assignAll(results);
+      final List<SongModel> results = await _audioRepository.loadDeviceSongs(
+        forceRefresh: forceRefresh,
+      );
+      if (!_hasSameSongs(songs, results)) {
+        songs.assignAll(results);
+      }
     } finally {
       isLoading.value = false;
     }
@@ -392,6 +419,23 @@ class HomeController extends GetxController {
     if (showScrollToTop.value != shouldShow) {
       showScrollToTop.value = shouldShow;
     }
+  }
+
+  bool _hasSameSongs(List<SongModel> current, List<SongModel> next) {
+    if (identical(current, next)) {
+      return true;
+    }
+    if (current.length != next.length) {
+      return false;
+    }
+    for (int index = 0; index < current.length; index++) {
+      final SongModel a = current[index];
+      final SongModel b = next[index];
+      if (a.id != b.id || a.uri != b.uri || a.filePath != b.filePath) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @override
