@@ -10,6 +10,7 @@ import '../../controllers/home_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../controllers/search_controller.dart' as app_search;
 import '../../controllers/settings_controller.dart';
+import '../../controllers/splash_controller.dart';
 import '../../core/constants/app_constants.dart';
 import '../../data/providers/lyrics_api_provider.dart';
 import '../../data/repositories/audio_repository.dart';
@@ -22,19 +23,16 @@ import '../../services/permissions_service.dart';
 import '../../services/storage_service.dart';
 import '../../services/user_service.dart';
 
-class AppBindings {
-  AppBindings._();
-
-  static bool _registered = false;
-
-  static void ensureInitialized() {
-    if (_registered) {
-      return;
-    }
-    _registered = true;
-
+class InitialBinding extends Bindings {
+  @override
+  void dependencies() {
     Get.put<StorageService>(
       StorageService(AppConstants.storageBox),
+      permanent: true,
+    );
+
+    Get.put<SettingsController>(
+      SettingsController(Get.find<StorageService>()),
       permanent: true,
     );
 
@@ -42,18 +40,6 @@ class AppBindings {
     Get.lazyPut<UserService>(() => UserService(), fenix: true);
     Get.lazyPut<ChatService>(() => ChatService(), fenix: true);
     Get.lazyPut<PermissionsService>(() => PermissionsService(), fenix: true);
-    Get.lazyPut<AudioRepository>(
-      () => AudioRepository(OnAudioQuery()),
-      fenix: true,
-    );
-    Get.lazyPut<LyricsRepository>(
-      () => LyricsRepository(LyricsApiProvider(Dio())),
-      fenix: true,
-    );
-    Get.lazyPut<AudioPlayerService>(
-      () => AudioPlayerService(AudioPlayer()),
-      fenix: true,
-    );
     Get.lazyPut<FollowService>(
       () => FollowService(authService: Get.find<AuthService>()),
       fenix: true,
@@ -78,26 +64,63 @@ class AppBindings {
       () => app_search.SearchController(userService: Get.find<UserService>()),
       fenix: true,
     );
-    Get.lazyPut<SettingsController>(
-      () => SettingsController(Get.find<StorageService>()),
-      fenix: true,
+  }
+}
+
+class SplashBinding extends Bindings {
+  @override
+  void dependencies() {
+    Get.put<SplashController>(
+      SplashController(storageService: Get.find<StorageService>()),
     );
-    Get.lazyPut<PlayerController>(
-      () => PlayerController(
-        audioService: Get.find<AudioPlayerService>(),
-        lyricsRepository: Get.find<LyricsRepository>(),
-        storageService: Get.find<StorageService>(),
-      ),
-      fenix: true,
-    );
-    Get.lazyPut<HomeController>(
-      () => HomeController(
-        audioRepository: Get.find<AudioRepository>(),
-        permissionsService: Get.find<PermissionsService>(),
-        storageService: Get.find<StorageService>(),
-        playerController: Get.find<PlayerController>(),
-      ),
-      fenix: true,
-    );
+  }
+}
+
+class HomeBinding extends Bindings {
+  @override
+  void dependencies() {
+    if (!Get.isRegistered<AudioRepository>()) {
+      Get.lazyPut<AudioRepository>(
+        () => AudioRepository(OnAudioQuery()),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<LyricsRepository>()) {
+      Get.lazyPut<LyricsRepository>(
+        () => LyricsRepository(LyricsApiProvider(Dio())),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<AudioPlayerService>()) {
+      Get.lazyPut<AudioPlayerService>(
+        () => AudioPlayerService(AudioPlayer()),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<PlayerController>()) {
+      Get.lazyPut<PlayerController>(
+        () => PlayerController(
+          audioService: Get.find<AudioPlayerService>(),
+          lyricsRepository: Get.find<LyricsRepository>(),
+          storageService: Get.find<StorageService>(),
+        ),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<HomeController>()) {
+      Get.lazyPut<HomeController>(
+        () => HomeController(
+          audioRepository: Get.find<AudioRepository>(),
+          permissionsService: Get.find<PermissionsService>(),
+          storageService: Get.find<StorageService>(),
+          playerController: Get.find<PlayerController>(),
+        ),
+        fenix: true,
+      );
+    }
   }
 }

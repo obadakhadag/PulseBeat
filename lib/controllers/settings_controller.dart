@@ -29,6 +29,7 @@ class SettingsController extends GetxController {
       'system' => ThemeMode.system,
       _ => ThemeMode.dark,
     };
+    Get.changeThemeMode(themeMode.value);
     showLyrics.value = _storageService.getShowLyrics();
     immersivePlayer.value = _storageService.getImmersivePlayer();
   }
@@ -36,6 +37,7 @@ class SettingsController extends GetxController {
   Future<void> setThemeMode(ThemeMode value) async {
     await _storageService.ensureInitialized();
     themeMode.value = value;
+    Get.changeThemeMode(value);
     _storageService.setThemeMode(switch (value) {
       ThemeMode.light => 'light',
       ThemeMode.system => 'system',

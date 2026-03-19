@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../core/bindings/app_bindings.dart';
 import '../pages/chat_page.dart';
 import '../pages/profile_page.dart';
 import '../pages/search_page.dart';
@@ -15,7 +16,7 @@ class AppPages {
 
   static const String splash = '/splash';
   static const String login = '/login';
-  static const String home = '/';
+  static const String home = '/home';
   static const String player = '/player';
   static const String settings = '/settings';
   static const String profile = '/profile';
@@ -24,9 +25,17 @@ class AppPages {
   static const String search = '/search';
 
   static final List<GetPage<dynamic>> pages = <GetPage<dynamic>>[
-    GetPage<dynamic>(name: splash, page: () => const SplashScreen()),
+    GetPage<dynamic>(
+      name: splash,
+      page: () => const SplashScreen(),
+      binding: SplashBinding(),
+    ),
     GetPage<dynamic>(name: login, page: () => const LoginScreen()),
-    GetPage<dynamic>(name: home, page: () => const HomeScreen()),
+    GetPage<dynamic>(
+      name: home,
+      page: () => const HomeScreen(),
+      binding: HomeBinding(),
+    ),
     GetPage<dynamic>(name: player, page: () => const PlayerScreen()),
     GetPage<dynamic>(name: settings, page: () => const SettingsScreen()),
     GetPage<dynamic>(name: profile, page: () => const ProfilePage()),

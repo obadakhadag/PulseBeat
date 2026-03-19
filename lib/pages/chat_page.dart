@@ -1,8 +1,10 @@
+// ignore_for_file: avoid_print
+
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:on_audio_query/on_audio_query.dart' as audio_query;
@@ -10,6 +12,7 @@ import 'package:on_audio_query/on_audio_query.dart' as audio_query;
 import '../controllers/home_controller.dart';
 import '../controllers/player_controller.dart';
 import '../data/models/song_model.dart';
+import '../services/supabase_debug_service.dart';
 import '../widgets/song_artwork.dart';
 import 'user_profile_page.dart';
 
@@ -35,12 +38,12 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
   final HomeController _homeController = Get.find<HomeController>();
   final PlayerController _playerController = Get.find<PlayerController>();
   final audio_query.OnAudioQuery _audioQuery = audio_query.OnAudioQuery();
   final TextEditingController _messageController = TextEditingController();
   final Map<int, SongModel?> _songLookupCache = <int, SongModel?>{};
+  final Map<String, String> _sharedAudioFileCache = <String, String>{};
   bool _isSending = false;
   String? _selectedMessageId;
 
@@ -50,6 +53,8 @@ class _ChatPageState extends State<ChatPage> {
     '\uD83D\uDC4D',
     '\uD83D\uDD25',
   ];
+  static const int _maxFirestoreAudioBytes = 700 * 1024;
+  static const int _maxFirestoreAudioBase64Length = 950000;
 
   @override
   void dispose() {
@@ -113,30 +118,42 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     try {
-      final DocumentReference<Map<String, dynamic>> chatRef = _firestore
-          .collection('chats')
-          .doc(chatId);
-      final String audioUrl = await _uploadSongAudio(
-        chatId: chatId,
-        song: song,
+      final String filePath = song.filePath.trim();
+      if (filePath.isEmpty) {
+        throw StateError('Song file path is missing.');
+      }
+
+      print('Sending song...');
+      print('Selected song path: $filePath');
+
+      final String? songUrl = await SupabaseDebugService.uploadSongDebug(
+        filePath,
       );
 
-      await chatRef.collection('messages').add(<String, dynamic>{
-        'senderUid': currentUserUid,
-        'type': 'song',
-        'songId': song.id,
-        'title': song.title,
-        'artist': song.artist,
-        'coverUrl': '',
-        'audioUrl': audioUrl,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      if (songUrl != null) {
+        print('Song uploaded successfully');
+        await _sendSongMessageToFirestore(
+          chatId: chatId,
+          currentUserUid: currentUserUid,
+          song: song,
+          songUrl: songUrl,
+        );
+      } else {
+        print('Song upload failed');
+        Get.snackbar('Error', 'Failed to upload song');
+        return;
+      }
 
-      await chatRef.update(<String, dynamic>{
-        'lastMessage': '\uD83C\uDFB5 ${song.title}',
-        'lastMessageAt': FieldValue.serverTimestamp(),
-      });
-    } catch (_) {
+      print('Song send pipeline completed');
+    } on StateError catch (error, stackTrace) {
+      print('SONG SEND STATE ERROR:');
+      print(error.toString());
+      print(stackTrace.toString());
+      Get.snackbar('Error', error.message.toString());
+    } catch (error, stackTrace) {
+      print('SONG SEND ERROR:');
+      print(error.toString());
+      print(stackTrace.toString());
       Get.snackbar('Error', 'Failed to send song.');
     } finally {
       if (mounted) {
@@ -147,32 +164,45 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  Future<String> _uploadSongAudio({
+  Future<void> _sendSongMessageToFirestore({
     required String chatId,
+    required String currentUserUid,
     required SongModel song,
+    required String songUrl,
   }) async {
-    final String filePath = song.filePath.trim();
-    if (filePath.isEmpty) {
-      throw StateError('Song file path is missing.');
-    }
+    print('STEP 11: Preparing Firestore song message');
 
-    final File audioFile = File(filePath);
-    if (!await audioFile.exists()) {
-      throw StateError('Song file does not exist.');
-    }
+    final DocumentReference<Map<String, dynamic>> chatRef = _firestore
+        .collection('chats')
+        .doc(chatId);
+    final String songName = _resolveSongFileName(song);
 
-    final Reference fileRef = _storage
-        .ref()
-        .child('songs')
-        .child(chatId)
-        .child('${song.id}.mp3');
+    print('STEP 12: Writing song message document');
 
-    await fileRef.putFile(
-      audioFile,
-      SettableMetadata(contentType: 'audio/mpeg'),
-    );
+    await chatRef.collection('messages').add(<String, dynamic>{
+      'senderUid': currentUserUid,
+      'senderId': currentUserUid,
+      'type': 'song',
+      'songId': song.id,
+      'title': song.title,
+      'artist': song.artist,
+      'songName': songName,
+      'coverUrl': '',
+      'songUrl': songUrl,
+      'audioUrl': songUrl,
+      'audioData': '',
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
-    return fileRef.getDownloadURL();
+    print('STEP 13: Song message document created');
+    print('STEP 14: Updating chat last message');
+
+    await chatRef.update(<String, dynamic>{
+      'lastMessage': '\uD83C\uDFB5 ${song.title}',
+      'lastMessageAt': FieldValue.serverTimestamp(),
+    });
+
+    print('STEP 15: Chat last message updated');
   }
 
   Future<void> _openSongSelector({
@@ -293,10 +323,188 @@ class _ChatPageState extends State<ChatPage> {
     return null;
   }
 
+  String _resolveSongFileName(SongModel song) {
+    final String normalizedPath = song.filePath.replaceAll('\\', '/');
+    final List<String> segments = normalizedPath.split('/');
+    final String lastSegment = segments.isNotEmpty ? segments.last.trim() : '';
+    if (lastSegment.isNotEmpty) {
+      return lastSegment;
+    }
+    return 'song_${song.id}.mp3';
+  }
+
+  String _sanitizeFileName(String value) {
+    final String sanitized = value.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    if (sanitized.trim().isNotEmpty) {
+      return sanitized;
+    }
+    return 'shared_song.mp3';
+  }
+
+  Future<String?> _decodeAudioToLocalFile({
+    required String cacheKey,
+    required String audioData,
+    required String songName,
+  }) async {
+    final String trimmedData = audioData.trim();
+    if (trimmedData.isEmpty) {
+      return null;
+    }
+    if (trimmedData.length > _maxFirestoreAudioBase64Length) {
+      throw StateError('Shared song data is too large for Firestore limits.');
+    }
+
+    final String normalizedKey = cacheKey.trim().isNotEmpty
+        ? cacheKey.trim()
+        : '${songName.hashCode.abs()}_${trimmedData.length}';
+    final String? cachedPath = _sharedAudioFileCache[normalizedKey];
+    if (cachedPath != null && cachedPath.isNotEmpty) {
+      final File cachedFile = File(cachedPath);
+      if (await cachedFile.exists()) {
+        return cachedPath;
+      }
+    }
+
+    late final List<int> bytes;
+    try {
+      bytes = base64Decode(trimmedData);
+    } catch (_) {
+      throw StateError('Unable to decode shared song data.');
+    }
+
+    if (bytes.isEmpty) {
+      throw StateError('Shared song data is empty.');
+    }
+    if (bytes.length > _maxFirestoreAudioBytes) {
+      throw StateError('Shared song is too large to decode.');
+    }
+
+    final Directory sharedDir = Directory(
+      '${Directory.systemTemp.path}${Platform.pathSeparator}pulsebeat_chat_audio',
+    );
+    if (!await sharedDir.exists()) {
+      await sharedDir.create(recursive: true);
+    }
+
+    final String safeName = _sanitizeFileName(
+      songName.trim().isEmpty ? 'shared_song.mp3' : songName.trim(),
+    );
+    final int dataHash = trimmedData.hashCode.abs();
+    final String filePath =
+        '${sharedDir.path}${Platform.pathSeparator}${normalizedKey.hashCode.abs()}_${dataHash}_$safeName';
+    final File outputFile = File(filePath);
+
+    if (!await outputFile.exists()) {
+      await outputFile.writeAsBytes(bytes, flush: true);
+    }
+
+    _sharedAudioFileCache[normalizedKey] = filePath;
+    return filePath;
+  }
+
+  Future<String?> _downloadSongFromUrlToLocalFile({
+    required String cacheKey,
+    required String songUrl,
+    required String songName,
+  }) async {
+    final String trimmedUrl = songUrl.trim();
+    if (trimmedUrl.isEmpty) {
+      return null;
+    }
+
+    final String normalizedKey = cacheKey.trim().isNotEmpty
+        ? cacheKey.trim()
+        : '${songName.hashCode.abs()}_${trimmedUrl.hashCode.abs()}';
+    final String? cachedPath = _sharedAudioFileCache[normalizedKey];
+    if (cachedPath != null && cachedPath.isNotEmpty) {
+      final File cachedFile = File(cachedPath);
+      if (await cachedFile.exists()) {
+        return cachedPath;
+      }
+    }
+
+    final Uri uri;
+    try {
+      uri = Uri.parse(trimmedUrl);
+    } catch (_) {
+      throw StateError('Invalid shared song URL.');
+    }
+
+    final HttpClient client = HttpClient();
+    try {
+      final HttpClientRequest request = await client.getUrl(uri);
+      final HttpClientResponse response = await request.close();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('Failed to download shared song.');
+      }
+
+      final List<int> bytes = await response.fold<List<int>>(<int>[], (
+        List<int> previous,
+        List<int> element,
+      ) {
+        previous.addAll(element);
+        return previous;
+      });
+      if (bytes.isEmpty) {
+        throw StateError('Downloaded shared song is empty.');
+      }
+
+      final Directory sharedDir = Directory(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}pulsebeat_chat_audio',
+      );
+      if (!await sharedDir.exists()) {
+        await sharedDir.create(recursive: true);
+      }
+
+      final String safeName = _sanitizeFileName(
+        songName.trim().isEmpty ? 'shared_song.mp3' : songName.trim(),
+      );
+      final String filePath =
+          '${sharedDir.path}${Platform.pathSeparator}${normalizedKey.hashCode.abs()}_${trimmedUrl.hashCode.abs()}_$safeName';
+      final File outputFile = File(filePath);
+
+      if (!await outputFile.exists()) {
+        await outputFile.writeAsBytes(bytes, flush: true);
+      }
+
+      _sharedAudioFileCache[normalizedKey] = filePath;
+      return filePath;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  SongModel _buildLocalSongFromMessage({
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+    required String songName,
+    required String localPath,
+  }) {
+    final int resolvedId = songId > 0 ? songId : localPath.hashCode.abs();
+    final String resolvedTitle = songTitle.trim().isNotEmpty
+        ? songTitle.trim()
+        : (songName.trim().isNotEmpty ? songName.trim() : 'Unknown song');
+
+    return SongModel(
+      id: resolvedId,
+      title: resolvedTitle,
+      artist: songArtist.trim().isNotEmpty
+          ? songArtist.trim()
+          : 'Unknown artist',
+      album: 'Shared in chat',
+      duration: Duration.zero,
+      filePath: localPath,
+      uri: Uri.file(localPath).toString(),
+      artworkId: songId > 0 ? songId : 0,
+    );
+  }
+
   SongModel? _buildRemoteSongFromMessage({
     required int songId,
     required String songTitle,
     required String songArtist,
+    required String songName,
     required String audioUrl,
   }) {
     final String trimmedUrl = audioUrl.trim();
@@ -307,7 +515,9 @@ class _ChatPageState extends State<ChatPage> {
     final int resolvedId = songId > 0 ? songId : trimmedUrl.hashCode.abs();
     return SongModel(
       id: resolvedId,
-      title: songTitle.trim().isEmpty ? 'Unknown song' : songTitle.trim(),
+      title: songTitle.trim().isNotEmpty
+          ? songTitle.trim()
+          : (songName.trim().isNotEmpty ? songName.trim() : 'Unknown song'),
       artist: songArtist.trim().isEmpty ? 'Unknown artist' : songArtist.trim(),
       album: 'Shared in chat',
       duration: Duration.zero,
@@ -318,34 +528,95 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _toggleSongPlayback({
+    required String cacheKey,
     required int songId,
     required String songTitle,
     required String songArtist,
+    required String songName,
     required String audioUrl,
+    required String audioData,
   }) async {
     await _playSongForChat(
+      cacheKey: cacheKey,
       songId: songId,
       songTitle: songTitle,
       songArtist: songArtist,
+      songName: songName,
       audioUrl: audioUrl,
+      audioData: audioData,
       toggleIfCurrent: true,
     );
   }
 
   Future<void> _playSongForChat({
+    required String cacheKey,
     required int songId,
     required String songTitle,
     required String songArtist,
+    required String songName,
     required String audioUrl,
+    required String audioData,
     required bool toggleIfCurrent,
   }) async {
-    final SongModel? localSong = await _findSongById(songId);
-    final SongModel? song =
+    final String trimmedAudioData = audioData.trim();
+    final String trimmedAudioUrl = audioUrl.trim();
+    SongModel? localSong;
+    SongModel? song;
+
+    if (trimmedAudioData.isNotEmpty) {
+      try {
+        final String? decodedPath = await _decodeAudioToLocalFile(
+          cacheKey: cacheKey,
+          audioData: trimmedAudioData,
+          songName: songName,
+        );
+        if (decodedPath != null && decodedPath.isNotEmpty) {
+          song = _buildLocalSongFromMessage(
+            songId: songId,
+            songTitle: songTitle,
+            songArtist: songArtist,
+            songName: songName,
+            localPath: decodedPath,
+          );
+        }
+      } on StateError catch (error) {
+        Get.snackbar('Error', error.message.toString());
+        return;
+      }
+    }
+
+    if (song == null && trimmedAudioUrl.isNotEmpty) {
+      try {
+        final String? downloadedPath = await _downloadSongFromUrlToLocalFile(
+          cacheKey: cacheKey,
+          songUrl: trimmedAudioUrl,
+          songName: songName,
+        );
+        if (downloadedPath != null && downloadedPath.isNotEmpty) {
+          song = _buildLocalSongFromMessage(
+            songId: songId,
+            songTitle: songTitle,
+            songArtist: songArtist,
+            songName: songName,
+            localPath: downloadedPath,
+          );
+        }
+      } on StateError catch (error) {
+        Get.snackbar('Error', error.message.toString());
+      }
+    }
+
+    if (song == null) {
+      localSong = await _findSongById(songId);
+    }
+
+    song ??=
         localSong ??
         _buildRemoteSongFromMessage(
           songId: songId,
           songTitle: songTitle,
           songArtist: songArtist,
+          songName: songName,
           audioUrl: audioUrl,
         );
     if (song == null) {
@@ -377,16 +648,17 @@ class _ChatPageState extends State<ChatPage> {
       }
 
       final List<SongModel> queue;
-      if (localSong != null) {
+      if (localSong != null && trimmedAudioData.isEmpty) {
+        final SongModel selectedLocalSong = localSong;
         final List<SongModel> baseQueue = _homeController.songs.isNotEmpty
             ? _homeController.songs.toList(growable: false)
-            : <SongModel>[localSong];
+            : <SongModel>[selectedLocalSong];
         final bool queueContainsSong = baseQueue.any(
-          (SongModel item) => item.id == localSong.id,
+          (SongModel item) => item.id == selectedLocalSong.id,
         );
         queue = queueContainsSong
             ? baseQueue
-            : <SongModel>[localSong, ...baseQueue];
+            : <SongModel>[selectedLocalSong, ...baseQueue];
       } else {
         queue = <SongModel>[song];
       }
@@ -395,7 +667,7 @@ class _ChatPageState extends State<ChatPage> {
     } catch (_) {
       Get.snackbar(
         'Error',
-        'Failed to play ${songTitle.trim().isEmpty ? 'song' : songTitle}.',
+        'Failed to play ${songTitle.trim().isNotEmpty ? songTitle.trim() : (songName.trim().isNotEmpty ? songName.trim() : 'song')}.',
       );
     }
   }
@@ -406,15 +678,22 @@ class _ChatPageState extends State<ChatPage> {
     required int songId,
     required String title,
     required String artist,
+    required String songName,
     required String coverUrl,
     required String audioUrl,
+    required String audioData,
   }) async {
     final String trimmedAudioUrl = audioUrl.trim();
-    if (songId <= 0 && trimmedAudioUrl.isEmpty) {
+    final String trimmedAudioData = audioData.trim();
+    if (songId <= 0 && trimmedAudioUrl.isEmpty && trimmedAudioData.isEmpty) {
       Get.snackbar('Error', 'Song is not available for session.');
       return;
     }
-    final int resolvedSongId = songId > 0 ? songId : trimmedAudioUrl.hashCode.abs();
+    final int resolvedSongId = songId > 0
+        ? songId
+        : (trimmedAudioUrl.isNotEmpty
+              ? trimmedAudioUrl.hashCode.abs()
+              : trimmedAudioData.hashCode.abs());
 
     try {
       final DocumentReference<Map<String, dynamic>> sessionRef = _firestore
@@ -426,8 +705,11 @@ class _ChatPageState extends State<ChatPage> {
         'songId': resolvedSongId,
         'title': title.trim().isEmpty ? 'Unknown song' : title.trim(),
         'artist': artist.trim().isEmpty ? 'Unknown artist' : artist.trim(),
+        'songName': songName.trim(),
         'coverUrl': coverUrl.trim(),
+        'songUrl': trimmedAudioUrl,
         'audioUrl': trimmedAudioUrl,
+        'audioData': trimmedAudioData,
         'hostUid': currentUserUid,
         'participants': <String>[currentUserUid],
         'isActive': true,
@@ -445,7 +727,9 @@ class _ChatPageState extends State<ChatPage> {
     required int songId,
     required String songTitle,
     required String songArtist,
+    required String songName,
     required String audioUrl,
+    required String audioData,
   }) async {
     if (sessionId.trim().isEmpty) {
       return;
@@ -458,10 +742,13 @@ class _ChatPageState extends State<ChatPage> {
         },
       );
       await _playSongForChat(
+        cacheKey: 'session_$sessionId',
         songId: songId,
         songTitle: songTitle,
         songArtist: songArtist,
+        songName: songName,
         audioUrl: audioUrl,
+        audioData: audioData,
         toggleIfCurrent: false,
       );
     } catch (_) {
@@ -749,20 +1036,29 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildSongPlaybackControls({
     required BuildContext context,
     required bool isMine,
+    required String cacheKey,
     required int songId,
     required String songTitle,
     required String songArtist,
+    required String songName,
     required String audioUrl,
+    required String audioData,
     required Duration fallbackDuration,
     required Color messageTextColor,
   }) {
     return Obx(() {
       final SongModel? currentSong = _playerController.currentSong.value;
       final String trimmedAudioUrl = audioUrl.trim();
+      final String? cachedPath = _sharedAudioFileCache[cacheKey.trim()];
+      final String cachedUri = cachedPath == null || cachedPath.isEmpty
+          ? ''
+          : Uri.file(cachedPath).toString();
       final bool isCurrentSong =
           currentSong != null &&
           ((songId > 0 && currentSong.id == songId) ||
-              (trimmedAudioUrl.isNotEmpty && currentSong.uri == trimmedAudioUrl));
+              (trimmedAudioUrl.isNotEmpty &&
+                  currentSong.uri == trimmedAudioUrl) ||
+              (cachedUri.isNotEmpty && currentSong.uri == cachedUri));
       final bool isPlayingThisSong =
           isCurrentSong && _playerController.isPlaying.value;
 
@@ -770,10 +1066,13 @@ class _ChatPageState extends State<ChatPage> {
         return _buildPlaybackBody(
           context: context,
           isMine: isMine,
+          cacheKey: cacheKey,
           songId: songId,
           songTitle: songTitle,
           songArtist: songArtist,
+          songName: songName,
           audioUrl: audioUrl,
+          audioData: audioData,
           isPlayingThisSong: isPlayingThisSong,
           position: Duration.zero,
           total: fallbackDuration,
@@ -806,10 +1105,13 @@ class _ChatPageState extends State<ChatPage> {
               return _buildPlaybackBody(
                 context: context,
                 isMine: isMine,
+                cacheKey: cacheKey,
                 songId: songId,
                 songTitle: songTitle,
                 songArtist: songArtist,
+                songName: songName,
                 audioUrl: audioUrl,
+                audioData: audioData,
                 isPlayingThisSong: isPlayingThisSong,
                 position: position,
                 total: total,
@@ -826,10 +1128,13 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildPlaybackBody({
     required BuildContext context,
     required bool isMine,
+    required String cacheKey,
     required int songId,
     required String songTitle,
     required String songArtist,
+    required String songName,
     required String audioUrl,
+    required String audioData,
     required bool isPlayingThisSong,
     required Duration position,
     required Duration total,
@@ -851,7 +1156,8 @@ class _ChatPageState extends State<ChatPage> {
         : 1.0;
     final int clampedPosition = position.inMilliseconds.clamp(0, max.toInt());
     final double sliderValue = clampedPosition.toDouble();
-    final bool canPlay = songId > 0 || audioUrl.trim().isNotEmpty;
+    final bool canPlay =
+        songId > 0 || audioUrl.trim().isNotEmpty || audioData.trim().isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -862,10 +1168,13 @@ class _ChatPageState extends State<ChatPage> {
               onPressed: !canPlay
                   ? null
                   : () => _toggleSongPlayback(
+                      cacheKey: cacheKey,
                       songId: songId,
                       songTitle: songTitle,
                       songArtist: songArtist,
+                      songName: songName,
                       audioUrl: audioUrl,
+                      audioData: audioData,
                     ),
               style: IconButton.styleFrom(
                 backgroundColor: buttonBackground,
@@ -895,7 +1204,7 @@ class _ChatPageState extends State<ChatPage> {
                   min: 0,
                   max: max,
                   value: sliderValue,
-                  onChanged: songId <= 0 || !canSeek
+                  onChanged: !canSeek
                       ? null
                       : (double value) {
                           _playerController.seek(
@@ -921,12 +1230,15 @@ class _ChatPageState extends State<ChatPage> {
     required BuildContext context,
     required String chatId,
     required String currentUserUid,
+    required String messageId,
     required bool isMine,
     required String coverUrl,
     required String audioUrl,
+    required String audioData,
     required int songId,
     required String songTitle,
     required String songArtist,
+    required String songName,
     required Color messageTextColor,
   }) {
     final Duration fallbackDuration =
@@ -980,10 +1292,13 @@ class _ChatPageState extends State<ChatPage> {
         _buildSongPlaybackControls(
           context: context,
           isMine: isMine,
+          cacheKey: messageId,
           songId: songId,
           songTitle: songTitle,
           songArtist: songArtist,
+          songName: songName,
           audioUrl: audioUrl,
+          audioData: audioData,
           fallbackDuration: fallbackDuration,
           messageTextColor: messageTextColor,
         ),
@@ -991,7 +1306,10 @@ class _ChatPageState extends State<ChatPage> {
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: songId <= 0 && audioUrl.trim().isEmpty
+            onPressed:
+                songId <= 0 &&
+                    audioUrl.trim().isEmpty &&
+                    audioData.trim().isEmpty
                 ? null
                 : () => _startListeningSession(
                     chatId: chatId,
@@ -999,8 +1317,10 @@ class _ChatPageState extends State<ChatPage> {
                     songId: songId,
                     title: songTitle,
                     artist: songArtist,
+                    songName: songName,
                     coverUrl: coverUrl,
                     audioUrl: audioUrl,
+                    audioData: audioData,
                   ),
             style: OutlinedButton.styleFrom(
               foregroundColor: isMine
@@ -1050,7 +1370,12 @@ class _ChatPageState extends State<ChatPage> {
             : doc.id;
         final String title = (data['title'] as String?)?.trim() ?? '';
         final String artist = (data['artist'] as String?)?.trim() ?? '';
-        final String audioUrl = (data['audioUrl'] as String?)?.trim() ?? '';
+        final String songName = (data['songName'] as String?)?.trim() ?? '';
+        final String songUrl = (data['songUrl'] as String?)?.trim() ?? '';
+        final String audioUrl = songUrl.isNotEmpty
+            ? songUrl
+            : (data['audioUrl'] as String?)?.trim() ?? '';
+        final String audioData = (data['audioData'] as String?)?.trim() ?? '';
         final int songId = (data['songId'] as num?)?.toInt() ?? 0;
 
         return Container(
@@ -1093,8 +1418,8 @@ class _ChatPageState extends State<ChatPage> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton(
-                  onPressed: songId <= 0
-                          && audioUrl.isEmpty
+                  onPressed:
+                      songId <= 0 && audioUrl.isEmpty && audioData.isEmpty
                       ? null
                       : () => _joinListeningSession(
                           sessionId: sessionId,
@@ -1102,7 +1427,9 @@ class _ChatPageState extends State<ChatPage> {
                           songId: songId,
                           songTitle: title,
                           songArtist: artist,
+                          songName: songName.isNotEmpty ? songName : title,
                           audioUrl: audioUrl,
+                          audioData: audioData,
                         ),
                   child: const Text('Join Listening'),
                 ),
@@ -1206,19 +1533,32 @@ class _ChatPageState extends State<ChatPage> {
                               (data['type'] as String?)?.trim().toLowerCase() ??
                               'text';
                           final String senderUid =
-                              (data['senderUid'] as String?)?.trim() ?? '';
+                              ((data['senderUid'] as String?) ??
+                                      (data['senderId'] as String?) ??
+                                      '')
+                                  .trim();
                           final String text =
                               (data['text'] as String?)?.trim() ?? '';
                           final String songTitle =
                               (data['title'] as String?)?.trim() ?? '';
                           final String songArtist =
                               (data['artist'] as String?)?.trim() ?? '';
+                          final String songName =
+                              (data['songName'] as String?)?.trim() ?? '';
                           final String coverUrl =
                               (data['coverUrl'] as String?)?.trim() ?? '';
-                          final String audioUrl =
-                              (data['audioUrl'] as String?)?.trim() ?? '';
+                          final String songUrl =
+                              (data['songUrl'] as String?)?.trim() ?? '';
+                          final String audioUrl = songUrl.isNotEmpty
+                              ? songUrl
+                              : (data['audioUrl'] as String?)?.trim() ?? '';
+                          final String audioData =
+                              (data['audioData'] as String?)?.trim() ?? '';
                           final int songId =
                               (data['songId'] as num?)?.toInt() ?? 0;
+                          final String resolvedSongTitle = songTitle.isNotEmpty
+                              ? songTitle
+                              : songName;
                           final bool isSongMessage = messageType == 'song';
 
                           if (!isSongMessage && text.isEmpty) {
@@ -1227,8 +1567,7 @@ class _ChatPageState extends State<ChatPage> {
 
                           final bool isMine = senderUid == currentUserUid;
                           final ThemeData theme = Theme.of(context);
-                          final Color myBubbleColor =
-                              theme.colorScheme.primary;
+                          final Color myBubbleColor = theme.colorScheme.primary;
                           const Color otherBubbleColor = Color(0xFFF1F1F1);
                           final Color bubbleColor = isMine
                               ? myBubbleColor
@@ -1297,12 +1636,15 @@ class _ChatPageState extends State<ChatPage> {
                                                 context: context,
                                                 chatId: resolvedChatId,
                                                 currentUserUid: currentUserUid,
+                                                messageId: doc.id,
                                                 isMine: isMine,
                                                 coverUrl: coverUrl,
                                                 audioUrl: audioUrl,
+                                                audioData: audioData,
                                                 songId: songId,
-                                                songTitle: songTitle,
+                                                songTitle: resolvedSongTitle,
                                                 songArtist: songArtist,
+                                                songName: songName,
                                                 messageTextColor:
                                                     bubbleTextColor,
                                               )
@@ -1446,7 +1788,15 @@ class _ChatPageState extends State<ChatPage> {
                                   chatId: resolvedChatId,
                                   currentUserUid: currentUserUid,
                                 ),
-                          icon: const Icon(Icons.music_note),
+                          icon: _isSending
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.music_note),
                         ),
                         Expanded(
                           child: TextField(

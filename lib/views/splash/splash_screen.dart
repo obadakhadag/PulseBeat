@@ -1,36 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../controllers/auth_controller.dart';
+import '../../controllers/splash_controller.dart';
 import '../../core/utils/extensions.dart';
-import '../../routes/app_pages.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends GetView<SplashController> {
   const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen> {
-  bool _didNavigate = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _routeFromAuthState();
-  }
-
-  Future<void> _routeFromAuthState() async {
-    await Future<void>.delayed(const Duration(milliseconds: 650));
-    if (!mounted || _didNavigate) {
-      return;
-    }
-
-    _didNavigate = true;
-    final bool isLoggedIn = Get.find<AuthController>().isLoggedIn;
-    Get.offNamed(isLoggedIn ? AppPages.home : AppPages.login);
-  }
 
   @override
   Widget build(BuildContext context) {
