@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/music_page_background.dart';
 import 'user_profile_page.dart';
 
 class FollowersListPage extends StatelessWidget {
@@ -54,96 +55,150 @@ class _FollowListPage extends StatelessWidget {
               .where('followerUid', isEqualTo: profileUid);
 
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: query.snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
-              snapshot.data?.docs ??
-              <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-          if (docs.isEmpty) {
-            return Center(child: Text('No $title yet.'));
-          }
-
-          return ListView.separated(
-            itemCount: docs.length,
-            padding: const EdgeInsets.all(16),
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final Map<String, dynamic> relationshipData = docs[index].data();
-              final String relatedUid =
-                  (isFollowersMode
-                          ? relationshipData['followerUid']
-                          : relationshipData['followingUid'])
-                      as String? ??
-                  '';
-              final String trimmedUid = relatedUid.trim();
-              if (trimmedUid.isEmpty) {
-                return const SizedBox.shrink();
-              }
-
-              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: firestore
-                    .collection('users')
-                    .doc(trimmedUid)
-                    .snapshots(),
-                builder: (context, userSnapshot) {
-                  final Map<String, dynamic> userData =
-                      Map<String, dynamic>.from(
-                        userSnapshot.data?.data() ?? <String, dynamic>{},
-                      );
-                  final String displayName =
-                      (userData['displayName'] as String?)?.trim().isNotEmpty ==
-                          true
-                      ? (userData['displayName'] as String).trim()
-                      : 'Unknown User';
-                  final String username =
-                      (userData['username'] as String?)?.trim().isNotEmpty ==
-                          true
-                      ? (userData['username'] as String).trim()
-                      : 'unknown';
-                  final String photoUrl =
-                      (userData['photoUrl'] as String?) ?? '';
-
-                  return ListTile(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => UserProfilePage(uid: trimmedUid),
+      body: MusicPageBackground(
+        child: SafeArea(
+          child: Column(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                child: Row(
+                  children: <Widget>[
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.w800),
                       ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    tileColor: Theme.of(context).cardColor,
-                    leading: CircleAvatar(
-                      backgroundImage: photoUrl.isNotEmpty
-                          ? NetworkImage(photoUrl)
-                          : null,
-                      child: photoUrl.isEmpty
-                          ? const Icon(Icons.person_rounded)
-                          : null,
-                    ),
-                    title: Text(
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      '@$username',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  );
-                },
-              );
-            },
-          );
-        },
+                  ],
+                ),
+              ),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: query.snapshots(),
+                  builder: (BuildContext context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final List<QueryDocumentSnapshot<Map<String, dynamic>>>
+                    docs =
+                        snapshot.data?.docs ??
+                        <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                    if (docs.isEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                        child: Card(
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text('No $title yet.'),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    return ListView.separated(
+                      itemCount: docs.length,
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (BuildContext context, int index) {
+                        final Map<String, dynamic> relationshipData =
+                            docs[index].data();
+                        final String relatedUid =
+                            (isFollowersMode
+                                    ? relationshipData['followerUid']
+                                    : relationshipData['followingUid'])
+                                as String? ??
+                            '';
+                        final String trimmedUid = relatedUid.trim();
+                        if (trimmedUid.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+
+                        return StreamBuilder<
+                          DocumentSnapshot<Map<String, dynamic>>
+                        >(
+                          stream: firestore
+                              .collection('users')
+                              .doc(trimmedUid)
+                              .snapshots(),
+                          builder: (BuildContext context, userSnapshot) {
+                            final Map<String, dynamic> userData =
+                                Map<String, dynamic>.from(
+                                  userSnapshot.data?.data() ??
+                                      <String, dynamic>{},
+                                );
+                            final String displayName =
+                                (userData['displayName'] as String?)
+                                        ?.trim()
+                                        .isNotEmpty ==
+                                    true
+                                ? (userData['displayName'] as String).trim()
+                                : 'Unknown User';
+                            final String username =
+                                (userData['username'] as String?)
+                                        ?.trim()
+                                        .isNotEmpty ==
+                                    true
+                                ? (userData['username'] as String).trim()
+                                : 'unknown';
+                            final String photoUrl =
+                                (userData['photoUrl'] as String?) ?? '';
+
+                            return Card(
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 8,
+                                ),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute<void>(
+                                    builder: (_) =>
+                                        UserProfilePage(uid: trimmedUid),
+                                  ),
+                                ),
+                                leading: CircleAvatar(
+                                  radius: 26,
+                                  backgroundImage: photoUrl.isNotEmpty
+                                      ? NetworkImage(photoUrl)
+                                      : null,
+                                  child: photoUrl.isEmpty
+                                      ? const Icon(Icons.person_rounded)
+                                      : null,
+                                ),
+                                title: Text(
+                                  displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  '@$username',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: const Icon(
+                                  Icons.arrow_forward_rounded,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

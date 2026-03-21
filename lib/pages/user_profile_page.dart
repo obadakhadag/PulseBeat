@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/follow_controller.dart';
+import '../widgets/music_page_background.dart';
 import 'followers_following_list_page.dart';
 
 class UserProfilePage extends StatefulWidget {
@@ -49,12 +50,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Future<void> _showFollowingMenu(String targetUid) async {
     final String? action = await showModalBottomSheet<String>(
       context: context,
-      builder: (context) {
+      builder: (BuildContext context) {
         return SafeArea(
-          child: ListTile(
-            leading: const Icon(Icons.person_remove_rounded),
-            title: const Text('Unfollow'),
-            onTap: () => Navigator.of(context).pop('unfollow'),
+          child: Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.person_remove_rounded),
+              title: const Text('Unfollow'),
+              onTap: () => Navigator.of(context).pop('unfollow'),
+            ),
           ),
         );
       },
@@ -82,194 +91,231 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: Get.back,
-        ),
-        title: const Text('User Profile'),
-      ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('User not found.'));
-          }
+      body: MusicPageBackground(
+        child: SafeArea(
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .snapshots(),
+            builder: (BuildContext context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || !snapshot.data!.exists) {
+                return const Center(child: Text('User not found.'));
+              }
 
-          final Map<String, dynamic> data = Map<String, dynamic>.from(
-            snapshot.data!.data() ?? <String, dynamic>{},
-          );
-          final String displayName =
-              (data['displayName'] as String?)?.trim().isNotEmpty == true
-              ? (data['displayName'] as String).trim()
-              : 'No display name';
-          final String username =
-              (data['username'] as String?)?.trim().isNotEmpty == true
-              ? (data['username'] as String).trim()
-              : 'unknown';
-          final String photoUrl = (data['photoUrl'] as String?) ?? '';
-          final String bio = (data['bio'] as String?)?.trim() ?? '';
-          final int followersCount =
-              (data['followersCount'] as num?)?.toInt() ?? 0;
-          final int followingCount =
-              (data['followingCount'] as num?)?.toInt() ?? 0;
-          final bool isOwnProfile = _authController.uid == uid;
+              final Map<String, dynamic> data = Map<String, dynamic>.from(
+                snapshot.data!.data() ?? <String, dynamic>{},
+              );
+              final String displayName =
+                  (data['displayName'] as String?)?.trim().isNotEmpty == true
+                  ? (data['displayName'] as String).trim()
+                  : 'No display name';
+              final String username =
+                  (data['username'] as String?)?.trim().isNotEmpty == true
+                  ? (data['username'] as String).trim()
+                  : 'unknown';
+              final String photoUrl = (data['photoUrl'] as String?) ?? '';
+              final String bio = (data['bio'] as String?)?.trim() ?? '';
+              final int followersCount =
+                  (data['followersCount'] as num?)?.toInt() ?? 0;
+              final int followingCount =
+                  (data['followingCount'] as num?)?.toInt() ?? 0;
+              final bool isOwnProfile = _authController.uid == uid;
 
-          return ListView(
-            padding: const EdgeInsets.all(24),
-            children: <Widget>[
-              Center(
-                child: CircleAvatar(
-                  radius: 54,
-                  backgroundImage: photoUrl.isNotEmpty
-                      ? NetworkImage(photoUrl)
-                      : null,
-                  child: photoUrl.isEmpty
-                      ? const Icon(Icons.person_rounded, size: 46)
-                      : null,
-                ),
-              ),
-              const SizedBox(height: 14),
-              Center(
-                child: Text(
-                  displayName,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Center(
-                child: Text(
-                  '@$username',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-              if (!isOwnProfile) ...<Widget>[
-                const SizedBox(height: 14),
-                Obx(() {
-                  final String status = _followController.statusFor(uid);
-                  final bool isBusy = _followController.isSending.value;
-
-                  if (status == 'following') {
-                    return SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: isBusy
-                            ? null
-                            : () => _showFollowingMenu(uid),
-                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                        label: const Text('Following'),
-                      ),
-                    );
-                  }
-
-                  if (status == 'requested') {
-                    return const SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: null,
-                        child: Text('Requested'),
-                      ),
-                    );
-                  }
-
-                  return SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: isBusy
-                          ? null
-                          : () => _followController.followUser(uid),
-                      child: const Text('Follow'),
-                    ),
-                  );
-                }),
-                const SizedBox(height: 10),
-                Obx(() {
-                  final bool isOpeningChat =
-                      _chatController.isOpeningChat.value;
-
-                  return SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: isOpeningChat
-                          ? null
-                          : () => _chatController.openDirectChat(
-                              otherUid: uid,
-                              otherDisplayName: displayName,
-                              otherUsername: username,
-                              otherPhotoUrl: photoUrl,
-                            ),
-                      icon: isOpeningChat
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.chat_bubble_outline_rounded),
-                      label: const Text('Message'),
-                    ),
-                  );
-                }),
-              ],
-              const SizedBox(height: 18),
-              Row(
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                 children: <Widget>[
-                  Expanded(
-                    child: _CounterCard(
-                      label: 'Followers',
-                      value: followersCount,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => FollowersListPage(profileUid: uid),
+                  Row(
+                    children: <Widget>[
+                      IconButton(
+                        onPressed: () => Get.back<void>(),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'User Profile',
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(22),
+                      child: Column(
+                        children: <Widget>[
+                          CircleAvatar(
+                            radius: 54,
+                            backgroundImage: photoUrl.isNotEmpty
+                                ? NetworkImage(photoUrl)
+                                : null,
+                            child: photoUrl.isEmpty
+                                ? const Icon(Icons.person_rounded, size: 42)
+                                : null,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            displayName,
+                            style: Theme.of(context).textTheme.headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '@$username',
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.70),
+                                ),
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: <Widget>[
+                              Expanded(
+                                child: _CounterCard(
+                                  label: 'Followers',
+                                  value: followersCount,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          FollowersListPage(profileUid: uid),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _CounterCard(
+                                  label: 'Following',
+                                  value: followingCount,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) =>
+                                          FollowingListPage(profileUid: uid),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (!isOwnProfile) ...<Widget>[
+                            const SizedBox(height: 16),
+                            Obx(() {
+                              final String status = _followController.statusFor(
+                                uid,
+                              );
+                              final bool isBusy =
+                                  _followController.isSending.value;
+
+                              if (status == 'following') {
+                                return SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: isBusy
+                                        ? null
+                                        : () => _showFollowingMenu(uid),
+                                    icon: const Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                    ),
+                                    label: const Text('Following'),
+                                  ),
+                                );
+                              }
+
+                              if (status == 'requested') {
+                                return const SizedBox(
+                                  width: double.infinity,
+                                  child: FilledButton(
+                                    onPressed: null,
+                                    child: Text('Requested'),
+                                  ),
+                                );
+                              }
+
+                              return SizedBox(
+                                width: double.infinity,
+                                child: FilledButton(
+                                  onPressed: isBusy
+                                      ? null
+                                      : () => _followController.followUser(uid),
+                                  child: const Text('Follow'),
+                                ),
+                              );
+                            }),
+                            const SizedBox(height: 10),
+                            Obx(() {
+                              final bool isOpeningChat =
+                                  _chatController.isOpeningChat.value;
+
+                              return SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: isOpeningChat
+                                      ? null
+                                      : () => _chatController.openDirectChat(
+                                          otherUid: uid,
+                                          otherDisplayName: displayName,
+                                          otherUsername: username,
+                                          otherPhotoUrl: photoUrl,
+                                        ),
+                                  icon: isOpeningChat
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.chat_bubble_outline_rounded,
+                                        ),
+                                  label: const Text('Message'),
+                                ),
+                              );
+                            }),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _CounterCard(
-                      label: 'Following',
-                      value: followingCount,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => FollowingListPage(profileUid: uid),
-                        ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'Bio',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            bio.isEmpty ? 'No bio yet' : bio,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.70),
+                                ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 18),
-              Text(
-                'Bio',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Text(
-                  bio.isEmpty ? 'No bio yet' : bio,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-            ],
-          );
-        },
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -284,11 +330,11 @@ class _CounterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget content = Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+    final Widget child = Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(14),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         children: <Widget>[
@@ -299,19 +345,26 @@ class _CounterCard extends StatelessWidget {
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.70),
+            ),
+          ),
         ],
       ),
     );
 
     if (onTap == null) {
-      return content;
+      return child;
     }
 
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(18),
       onTap: onTap,
-      child: content,
+      child: child,
     );
   }
 }

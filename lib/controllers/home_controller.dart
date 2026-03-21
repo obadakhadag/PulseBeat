@@ -121,14 +121,11 @@ class HomeController extends GetxController {
         ? true
         : await _permissionsService.requestAudioAccess();
     permissionGranted.value = hasPermission;
-    if (!permissionGranted.value) {
-      isLoading.value = false;
-      return;
-    }
 
     try {
       final List<SongModel> results = await _audioRepository.loadDeviceSongs(
         forceRefresh: forceRefresh,
+        includeDeviceSongs: permissionGranted.value,
       );
       if (!_hasSameSongs(songs, results)) {
         songs.assignAll(results);

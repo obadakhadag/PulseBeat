@@ -34,6 +34,21 @@ class SongModel {
     );
   }
 
+  factory SongModel.fromMap(Map<String, dynamic> data) {
+    return SongModel(
+      id: (data['id'] as num?)?.toInt() ?? 0,
+      title: (data['title'] as String?) ?? 'Unknown song',
+      artist: (data['artist'] as String?) ?? '<unknown>',
+      album: (data['album'] as String?) ?? 'Singles',
+      duration: Duration(
+        milliseconds: (data['durationMs'] as num?)?.toInt() ?? 0,
+      ),
+      filePath: (data['filePath'] as String?) ?? '',
+      uri: (data['uri'] as String?) ?? '',
+      artworkId: (data['artworkId'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   SongModel copyWith({
     int? id,
     String? title,
@@ -54,6 +69,19 @@ class SongModel {
       uri: uri ?? this.uri,
       artworkId: artworkId ?? this.artworkId,
     );
+  }
+
+  Map<String, dynamic> toMap() {
+    return <String, dynamic>{
+      'id': id,
+      'title': title,
+      'artist': artist,
+      'album': album,
+      'durationMs': duration.inMilliseconds,
+      'filePath': filePath,
+      'uri': uri,
+      'artworkId': artworkId,
+    };
   }
 
   String get normalizedFilePath => filePath.replaceAll('\\', '/');

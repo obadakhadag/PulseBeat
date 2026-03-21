@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,11 +9,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:on_audio_query/on_audio_query.dart' as audio_query;
+import 'package:path_provider/path_provider.dart';
 
 import '../controllers/home_controller.dart';
 import '../controllers/player_controller.dart';
+import '../core/constants/app_constants.dart';
 import '../data/models/song_model.dart';
+import '../services/storage_service.dart';
 import '../services/supabase_debug_service.dart';
+import '../widgets/music_page_background.dart';
 import '../widgets/song_artwork.dart';
 import 'user_profile_page.dart';
 
@@ -36,16 +41,49 @@ class ChatPage extends StatefulWidget {
   State<ChatPage> createState() => _ChatPageState();
 }
 
+class _AnimatedChatMessage extends StatelessWidget {
+  const _AnimatedChatMessage({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      tween: Tween<double>(begin: 0, end: 1),
+      child: child,
+      builder: (BuildContext context, double value, Widget? child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * 14),
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ChatPageState extends State<ChatPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final HomeController _homeController = Get.find<HomeController>();
   final PlayerController _playerController = Get.find<PlayerController>();
+  final StorageService _storageService = Get.find<StorageService>();
   final audio_query.OnAudioQuery _audioQuery = audio_query.OnAudioQuery();
   final TextEditingController _messageController = TextEditingController();
+  final FocusNode _messageFocusNode = FocusNode();
+  final ScrollController _messageListController = ScrollController();
   final Map<int, SongModel?> _songLookupCache = <int, SongModel?>{};
   final Map<String, String> _sharedAudioFileCache = <String, String>{};
   bool _isSending = false;
+  bool _isComposerFocused = false;
+  bool _isTyping = false;
   String? _selectedMessageId;
+  String? _activeChatId;
+  String? _typingUserUid;
+  Timer? _typingTimer;
 
   static const List<String> _reactionOptions = <String>[
     '\u2764\uFE0F',
@@ -57,9 +95,353 @@ class _ChatPageState extends State<ChatPage> {
   static const int _maxFirestoreAudioBase64Length = 950000;
 
   @override
+  void initState() {
+    super.initState();
+    _messageFocusNode.addListener(_handleComposerFocusChanged);
+  }
+
+  @override
   void dispose() {
+    _typingTimer?.cancel();
+    final String? activeChatId = _activeChatId;
+    final String? typingUserUid = _typingUserUid;
+    if (activeChatId != null && typingUserUid != null && _isTyping) {
+      unawaited(
+        _setTypingState(
+          chatId: activeChatId,
+          currentUserUid: typingUserUid,
+          isTyping: false,
+        ),
+      );
+    }
     _messageController.dispose();
+    _messageFocusNode
+      ..removeListener(_handleComposerFocusChanged)
+      ..dispose();
+    _messageListController.dispose();
     super.dispose();
+  }
+
+  void _handleComposerFocusChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isComposerFocused = _messageFocusNode.hasFocus;
+    });
+  }
+
+  void _syncTypingContext({
+    required String chatId,
+    required String currentUserUid,
+  }) {
+    if (_activeChatId == chatId && _typingUserUid == currentUserUid) {
+      return;
+    }
+
+    final String? previousChatId = _activeChatId;
+    final String? previousUserUid = _typingUserUid;
+    _activeChatId = chatId;
+    _typingUserUid = currentUserUid;
+
+    if (previousChatId != null && previousUserUid != null && _isTyping) {
+      unawaited(
+        _setTypingState(
+          chatId: previousChatId,
+          currentUserUid: previousUserUid,
+          isTyping: false,
+        ),
+      );
+    }
+  }
+
+  Future<void> _setTypingState({
+    required String chatId,
+    required String currentUserUid,
+    required bool isTyping,
+  }) async {
+    if (chatId.trim().isEmpty ||
+        currentUserUid.trim().isEmpty ||
+        _isTyping == isTyping) {
+      return;
+    }
+
+    _isTyping = isTyping;
+    try {
+      await _firestore.collection('chats').doc(chatId).update(<String, dynamic>{
+        'typing.$currentUserUid': isTyping,
+      });
+    } catch (_) {
+      _isTyping = !isTyping;
+    }
+  }
+
+  void _handleTypingChanged({
+    required String chatId,
+    required String currentUserUid,
+    required String value,
+  }) {
+    final String trimmedValue = value.trim();
+    _typingTimer?.cancel();
+
+    if (trimmedValue.isEmpty) {
+      unawaited(
+        _setTypingState(
+          chatId: chatId,
+          currentUserUid: currentUserUid,
+          isTyping: false,
+        ),
+      );
+      return;
+    }
+
+    unawaited(
+      _setTypingState(
+        chatId: chatId,
+        currentUserUid: currentUserUid,
+        isTyping: true,
+      ),
+    );
+
+    _typingTimer = Timer(const Duration(seconds: 2), () {
+      unawaited(
+        _setTypingState(
+          chatId: chatId,
+          currentUserUid: currentUserUid,
+          isTyping: false,
+        ),
+      );
+    });
+  }
+
+  DateTime? _resolveMessageDateTime(dynamic rawValue) {
+    if (rawValue is Timestamp) {
+      return rawValue.toDate();
+    }
+    if (rawValue is DateTime) {
+      return rawValue;
+    }
+    return null;
+  }
+
+  String _formatMessageTime(BuildContext context, DateTime? value) {
+    if (value == null) {
+      return '';
+    }
+
+    return MaterialLocalizations.of(
+      context,
+    ).formatTimeOfDay(TimeOfDay.fromDateTime(value.toLocal()));
+  }
+
+  String _buildSharedSongSourceKey({
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+    required String songName,
+    required String audioUrl,
+  }) {
+    final String trimmedUrl = audioUrl.trim();
+    if (trimmedUrl.isNotEmpty) {
+      return 'url:$trimmedUrl';
+    }
+
+    String normalize(String value) =>
+        value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+    return 'chat_song:${songId > 0 ? songId : 0}'
+        '|${normalize(songTitle)}'
+        '|${normalize(songArtist)}'
+        '|${normalize(songName)}';
+  }
+
+  Future<Directory> _ensureDownloadedSongsDirectory() async {
+    final Directory documentsDirectory =
+        await getApplicationDocumentsDirectory();
+    final Directory downloadDirectory = Directory(
+      '${documentsDirectory.path}${Platform.pathSeparator}${AppConstants.downloadedSongsFolder}',
+    );
+    if (!await downloadDirectory.exists()) {
+      await downloadDirectory.create(recursive: true);
+    }
+    return downloadDirectory;
+  }
+
+  String _resolveSongFileExtension({
+    required String songName,
+    required String songTitle,
+    required String audioUrl,
+  }) {
+    String? extensionFrom(String value) {
+      final String trimmedValue = value.trim();
+      final int dotIndex = trimmedValue.lastIndexOf('.');
+      if (dotIndex <= 0 || dotIndex == trimmedValue.length - 1) {
+        return null;
+      }
+
+      final String candidate = trimmedValue.substring(dotIndex).toLowerCase();
+      if (!RegExp(r'^\.[a-z0-9]{2,5}$').hasMatch(candidate)) {
+        return null;
+      }
+      return candidate;
+    }
+
+    return extensionFrom(songName) ??
+        extensionFrom(songTitle) ??
+        extensionFrom(Uri.tryParse(audioUrl)?.pathSegments.last ?? '') ??
+        '.mp3';
+  }
+
+  Future<String> _buildDownloadedSongPath({
+    required Directory directory,
+    required String songName,
+    required String songTitle,
+    required String audioUrl,
+  }) async {
+    final String rawName = songName.trim().isNotEmpty
+        ? songName.trim()
+        : songTitle.trim().isNotEmpty
+        ? songTitle.trim()
+        : 'shared_song';
+    final String extension = _resolveSongFileExtension(
+      songName: songName,
+      songTitle: songTitle,
+      audioUrl: audioUrl,
+    );
+    final String safeBaseName = _sanitizeFileName(
+      rawName.replaceAll(RegExp(r'\.[a-zA-Z0-9]{2,5}$'), ''),
+    );
+
+    int suffix = 0;
+    while (true) {
+      final String fileName = suffix == 0
+          ? '$safeBaseName$extension'
+          : '${safeBaseName}_$suffix$extension';
+      final String filePath =
+          '${directory.path}${Platform.pathSeparator}$fileName';
+      if (!await File(filePath).exists()) {
+        return filePath;
+      }
+      suffix += 1;
+    }
+  }
+
+  Future<void> _saveReceivedSong({
+    required String cacheKey,
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+    required String songName,
+    required String audioUrl,
+    required String audioData,
+  }) async {
+    final String sourceKey = _buildSharedSongSourceKey(
+      songId: songId,
+      songTitle: songTitle,
+      songArtist: songArtist,
+      songName: songName,
+      audioUrl: audioUrl,
+    );
+    final SongModel? existingSong = _storageService.getDownloadedSongBySource(
+      sourceKey,
+    );
+    if (existingSong != null && existingSong.filePath.trim().isNotEmpty) {
+      final File existingFile = File(existingSong.filePath);
+      if (await existingFile.exists()) {
+        _sharedAudioFileCache[cacheKey] = existingSong.filePath;
+        _sharedAudioFileCache[sourceKey] = existingSong.filePath;
+        await _homeController.loadLibrary(forceRefresh: true);
+        Get.snackbar('Saved', 'Song saved to your library');
+        return;
+      }
+    }
+
+    try {
+      final Directory downloadDirectory =
+          await _ensureDownloadedSongsDirectory();
+      final String outputPath = await _buildDownloadedSongPath(
+        directory: downloadDirectory,
+        songName: songName,
+        songTitle: songTitle,
+        audioUrl: audioUrl,
+      );
+
+      final String? cachedPath = _sharedAudioFileCache[cacheKey];
+      if (cachedPath != null && cachedPath.trim().isNotEmpty) {
+        final File cachedFile = File(cachedPath);
+        if (await cachedFile.exists()) {
+          await cachedFile.copy(outputPath);
+        }
+      }
+
+      final File outputFile = File(outputPath);
+      if (!await outputFile.exists()) {
+        if (audioData.trim().isNotEmpty) {
+          final String? decodedPath = await _decodeAudioToLocalFile(
+            cacheKey: sourceKey,
+            audioData: audioData,
+            songName: songName,
+          );
+          if (decodedPath == null || decodedPath.trim().isEmpty) {
+            throw StateError('Shared song data is unavailable.');
+          }
+          await File(decodedPath).copy(outputPath);
+        } else if (audioUrl.trim().isNotEmpty) {
+          final String? tempPath = await _downloadSongFromUrlToLocalFile(
+            cacheKey: sourceKey,
+            songUrl: audioUrl,
+            songName: songName,
+          );
+          if (tempPath == null || tempPath.trim().isEmpty) {
+            throw StateError('Shared song download is unavailable.');
+          }
+          await File(tempPath).copy(outputPath);
+        } else {
+          final SongModel? localSong = await _findSongById(songId);
+          final String localPath = localSong?.filePath.trim() ?? '';
+          if (localPath.isEmpty) {
+            throw StateError('Song file is unavailable.');
+          }
+
+          final File localFile = File(localPath);
+          if (!await localFile.exists()) {
+            throw StateError('Song file is missing on this device.');
+          }
+          await localFile.copy(outputPath);
+        }
+      }
+
+      final Duration duration =
+          _homeController.findSongById(songId)?.duration ?? Duration.zero;
+      final SongModel savedSong = SongModel(
+        id:
+            existingSong?.id ??
+            DateTime.now().microsecondsSinceEpoch.remainder(2147483647),
+        title: songTitle.trim().isNotEmpty
+            ? songTitle.trim()
+            : (songName.trim().isNotEmpty ? songName.trim() : 'Unknown song'),
+        artist: songArtist.trim().isNotEmpty
+            ? songArtist.trim()
+            : 'Unknown artist',
+        album: 'Downloads',
+        duration: duration,
+        filePath: outputPath,
+        uri: Uri.file(outputPath).toString(),
+        artworkId: 0,
+      );
+
+      _storageService.saveDownloadedSong(sourceKey: sourceKey, song: savedSong);
+      _sharedAudioFileCache[cacheKey] = outputPath;
+      _sharedAudioFileCache[sourceKey] = outputPath;
+
+      await _homeController.loadLibrary(forceRefresh: true);
+      Get.snackbar('Saved', 'Song saved to your library');
+    } on StateError catch (error) {
+      Get.snackbar('Error', error.message.toString());
+    } catch (_) {
+      Get.snackbar('Error', 'Failed to save song.');
+    }
   }
 
   Future<void> _sendMessage({
@@ -93,6 +475,12 @@ class _ChatPageState extends State<ChatPage> {
       });
 
       _messageController.clear();
+      _typingTimer?.cancel();
+      await _setTypingState(
+        chatId: chatId,
+        currentUserUid: currentUserUid,
+        isTyping: false,
+      );
     } catch (_) {
       Get.snackbar('Error', 'Failed to send message.');
     } finally {
@@ -223,32 +611,53 @@ class _ChatPageState extends State<ChatPage> {
           );
         }
 
-        return SizedBox(
+        return Container(
           height: MediaQuery.of(context).size.height * 0.72,
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(28),
+          ),
           child: ListView.separated(
             itemCount: songs.length,
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            padding: EdgeInsets.zero,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
               final SongModel song = songs[index];
               return ListTile(
                 onTap: () => Navigator.of(context).pop(song),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                tileColor: Theme.of(context).cardColor,
+                tileColor: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.04),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 leading: SongArtwork(
                   songId: song.artworkId,
-                  width: 46,
-                  height: 46,
-                  borderRadius: BorderRadius.circular(10),
+                  width: 50,
+                  height: 50,
+                  borderRadius: BorderRadius.circular(14),
                   fallback: Container(
-                    width: 46,
-                    height: 46,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.15),
-                    child: const Icon(Icons.music_note_rounded),
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: <Color>[
+                          Theme.of(context).colorScheme.primary,
+                          Theme.of(context).colorScheme.secondary,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.music_note_rounded,
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
                   ),
                 ),
                 title: Text(
@@ -917,6 +1326,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildChatHeader({
+    required String chatId,
     required String otherUid,
     required String fallbackDisplayName,
     required String fallbackUsername,
@@ -942,36 +1352,78 @@ class _ChatPageState extends State<ChatPage> {
             ? (userData['photoUrl'] as String).trim()
             : fallbackPhotoUrl;
 
-        return InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute<void>(
-              builder: (_) => UserProfilePage(uid: otherUid),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              CircleAvatar(
-                radius: 16,
-                backgroundImage: photoUrl.isNotEmpty
-                    ? NetworkImage(photoUrl)
-                    : null,
-                child: photoUrl.isEmpty
-                    ? const Icon(Icons.person_rounded, size: 16)
-                    : null,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: _firestore.collection('chats').doc(chatId).snapshots(),
+          builder: (context, chatSnapshot) {
+            final Map<String, dynamic> chatData = Map<String, dynamic>.from(
+              chatSnapshot.data?.data() ?? <String, dynamic>{},
+            );
+            final Map<String, dynamic> typingMap = chatData['typing'] is Map
+                ? Map<String, dynamic>.from(
+                    chatData['typing'] as Map<dynamic, dynamic>,
+                  )
+                : <String, dynamic>{};
+            final bool isOtherUserTyping = typingMap[otherUid] == true;
+
+            return InkWell(
+              borderRadius: BorderRadius.circular(22),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => UserProfilePage(uid: otherUid),
                 ),
               ),
-            ],
-          ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundImage: photoUrl.isNotEmpty
+                        ? NetworkImage(photoUrl)
+                        : null,
+                    child: photoUrl.isEmpty
+                        ? const Icon(Icons.person_rounded, size: 18)
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          isOtherUserTyping
+                              ? 'Typing...'
+                              : fallbackUsername.isNotEmpty
+                              ? '@$fallbackUsername'
+                              : 'Online',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: isOtherUserTyping
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context).colorScheme.onSurface
+                                          .withValues(alpha: 0.60),
+                                fontWeight: isOtherUserTyping
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -986,9 +1438,25 @@ class _ChatPageState extends State<ChatPage> {
     final Widget fallback = Container(
       width: 52,
       height: 52,
-      color: isMine
-          ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.18)
-          : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: <Color>[
+            isMine
+                ? Theme.of(
+                    context,
+                  ).colorScheme.onPrimary.withValues(alpha: 0.34)
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.92),
+            isMine
+                ? Theme.of(
+                    context,
+                  ).colorScheme.onPrimary.withValues(alpha: 0.16)
+                : Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: 0.88),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: Icon(
         Icons.music_note,
         color: isMine ? Theme.of(context).colorScheme.onPrimary : null,
@@ -997,7 +1465,7 @@ class _ChatPageState extends State<ChatPage> {
 
     if (coverUrl.isNotEmpty) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         child: Image.network(
           coverUrl,
           width: 52,
@@ -1013,12 +1481,12 @@ class _ChatPageState extends State<ChatPage> {
         songId: songId,
         width: 52,
         height: 52,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(14),
         fallback: fallback,
       );
     }
 
-    return ClipRRect(borderRadius: BorderRadius.circular(10), child: fallback);
+    return ClipRRect(borderRadius: BorderRadius.circular(14), child: fallback);
   }
 
   String _formatDuration(Duration value) {
@@ -1179,7 +1647,10 @@ class _ChatPageState extends State<ChatPage> {
               style: IconButton.styleFrom(
                 backgroundColor: buttonBackground,
                 foregroundColor: buttonForeground,
-                minimumSize: const Size(36, 36),
+                minimumSize: const Size(42, 42),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
               ),
               icon: Icon(
                 isPlayingThisSong
@@ -1195,7 +1666,7 @@ class _ChatPageState extends State<ChatPage> {
                   inactiveTrackColor: activeColor.withValues(alpha: 0.30),
                   thumbColor: activeColor,
                   overlayColor: activeColor.withValues(alpha: 0.16),
-                  trackHeight: 2.5,
+                  trackHeight: 3,
                   thumbShape: const RoundSliderThumbShape(
                     enabledThumbRadius: 6,
                   ),
@@ -1303,40 +1774,74 @@ class _ChatPageState extends State<ChatPage> {
           messageTextColor: messageTextColor,
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed:
-                songId <= 0 &&
-                    audioUrl.trim().isEmpty &&
-                    audioData.trim().isEmpty
-                ? null
-                : () => _startListeningSession(
-                    chatId: chatId,
-                    currentUserUid: currentUserUid,
-                    songId: songId,
-                    title: songTitle,
-                    artist: songArtist,
-                    songName: songName,
-                    coverUrl: coverUrl,
-                    audioUrl: audioUrl,
-                    audioData: audioData,
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: <Widget>[
+            if (!isMine)
+              OutlinedButton.icon(
+                onPressed:
+                    songId <= 0 &&
+                        audioUrl.trim().isEmpty &&
+                        audioData.trim().isEmpty
+                    ? null
+                    : () => _saveReceivedSong(
+                        cacheKey: messageId,
+                        songId: songId,
+                        songTitle: songTitle,
+                        songArtist: songArtist,
+                        songName: songName,
+                        audioUrl: audioUrl,
+                        audioData: audioData,
+                      ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: isMine
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : Theme.of(context).colorScheme.primary,
+                  side: BorderSide(
+                    color: isMine
+                        ? Theme.of(
+                            context,
+                          ).colorScheme.onPrimary.withValues(alpha: 0.35)
+                        : Theme.of(context).dividerColor,
                   ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: isMine
-                  ? Theme.of(context).colorScheme.onPrimary
-                  : Theme.of(context).colorScheme.primary,
-              side: BorderSide(
-                color: isMine
-                    ? Theme.of(
-                        context,
-                      ).colorScheme.onPrimary.withValues(alpha: 0.35)
-                    : Theme.of(context).dividerColor,
+                ),
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Save'),
               ),
+            OutlinedButton.icon(
+              onPressed:
+                  songId <= 0 &&
+                      audioUrl.trim().isEmpty &&
+                      audioData.trim().isEmpty
+                  ? null
+                  : () => _startListeningSession(
+                      chatId: chatId,
+                      currentUserUid: currentUserUid,
+                      songId: songId,
+                      title: songTitle,
+                      artist: songArtist,
+                      songName: songName,
+                      coverUrl: coverUrl,
+                      audioUrl: audioUrl,
+                      audioData: audioData,
+                    ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isMine
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : Theme.of(context).colorScheme.primary,
+                side: BorderSide(
+                  color: isMine
+                      ? Theme.of(
+                          context,
+                        ).colorScheme.onPrimary.withValues(alpha: 0.35)
+                      : Theme.of(context).dividerColor,
+                ),
+              ),
+              icon: const Icon(Icons.headphones_rounded),
+              label: const Text('Listen Together'),
             ),
-            icon: const Icon(Icons.headphones_rounded),
-            label: const Text('Listen Together'),
-          ),
+          ],
         ),
       ],
     );
@@ -1380,13 +1885,20 @@ class _ChatPageState extends State<ChatPage> {
 
         return Container(
           width: double.infinity,
-          margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              colors: <Color>[
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.20),
+                Theme.of(context).colorScheme.secondary.withValues(alpha: 0.18),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: Theme.of(context).dividerColor.withValues(alpha: 0.35),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.06),
             ),
           ),
           child: Column(
@@ -1478,11 +1990,19 @@ class _ChatPageState extends State<ChatPage> {
         : 'Chat';
     final String? currentUserUid = FirebaseAuth.instance.currentUser?.uid;
 
+    if (resolvedChatId.isNotEmpty && currentUserUid != null) {
+      _syncTypingContext(
+        chatId: resolvedChatId,
+        currentUserUid: currentUserUid,
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: resolvedOtherUid.isEmpty
             ? Text(titleFallback)
             : _buildChatHeader(
+                chatId: resolvedChatId,
                 otherUid: resolvedOtherUid,
                 fallbackDisplayName: resolvedDisplayName,
                 fallbackUsername: resolvedUsername,
@@ -1494,347 +2014,552 @@ class _ChatPageState extends State<ChatPage> {
               currentUserUid == null ||
               currentUserUid.isEmpty
           ? const Center(child: Text('Chat unavailable.'))
-          : Column(
-              children: <Widget>[
-                _buildActiveSessionBanner(
-                  context: context,
-                  chatId: resolvedChatId,
-                  currentUserUid: currentUserUid,
-                ),
-                Expanded(
-                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: _firestore
-                        .collection('chats')
-                        .doc(resolvedChatId)
-                        .collection('messages')
-                        .orderBy('createdAt')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+          : MusicPageBackground(
+              child: Column(
+                children: <Widget>[
+                  _buildActiveSessionBanner(
+                    context: context,
+                    chatId: resolvedChatId,
+                    currentUserUid: currentUserUid,
+                  ),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: _firestore
+                          .collection('chats')
+                          .doc(resolvedChatId)
+                          .collection('messages')
+                          .orderBy('createdAt')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
 
-                      final List<QueryDocumentSnapshot<Map<String, dynamic>>>
-                      docs =
-                          snapshot.data?.docs ??
-                          <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-                      if (docs.isEmpty) {
-                        return const Center(child: Text('No messages yet'));
-                      }
+                        final List<QueryDocumentSnapshot<Map<String, dynamic>>>
+                        docs =
+                            snapshot.data?.docs ??
+                            <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+                        if (docs.isEmpty) {
+                          return const Center(child: Text('No messages yet'));
+                        }
 
-                      return ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                        itemCount: docs.length,
-                        itemBuilder: (context, index) {
-                          final QueryDocumentSnapshot<Map<String, dynamic>>
-                          doc = docs[index];
-                          final Map<String, dynamic> data = doc.data();
-                          final String messageType =
-                              (data['type'] as String?)?.trim().toLowerCase() ??
-                              'text';
-                          final String senderUid =
-                              ((data['senderUid'] as String?) ??
-                                      (data['senderId'] as String?) ??
-                                      '')
-                                  .trim();
-                          final String text =
-                              (data['text'] as String?)?.trim() ?? '';
-                          final String songTitle =
-                              (data['title'] as String?)?.trim() ?? '';
-                          final String songArtist =
-                              (data['artist'] as String?)?.trim() ?? '';
-                          final String songName =
-                              (data['songName'] as String?)?.trim() ?? '';
-                          final String coverUrl =
-                              (data['coverUrl'] as String?)?.trim() ?? '';
-                          final String songUrl =
-                              (data['songUrl'] as String?)?.trim() ?? '';
-                          final String audioUrl = songUrl.isNotEmpty
-                              ? songUrl
-                              : (data['audioUrl'] as String?)?.trim() ?? '';
-                          final String audioData =
-                              (data['audioData'] as String?)?.trim() ?? '';
-                          final int songId =
-                              (data['songId'] as num?)?.toInt() ?? 0;
-                          final String resolvedSongTitle = songTitle.isNotEmpty
-                              ? songTitle
-                              : songName;
-                          final bool isSongMessage = messageType == 'song';
+                        return ListView.builder(
+                          controller: _messageListController,
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                          physics: const BouncingScrollPhysics(),
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          itemCount: docs.length,
+                          itemBuilder: (context, index) {
+                            final QueryDocumentSnapshot<Map<String, dynamic>>
+                            doc = docs[index];
+                            final Map<String, dynamic> data = doc.data();
+                            final String messageType =
+                                (data['type'] as String?)
+                                    ?.trim()
+                                    .toLowerCase() ??
+                                'text';
+                            final String senderUid =
+                                ((data['senderUid'] as String?) ??
+                                        (data['senderId'] as String?) ??
+                                        '')
+                                    .trim();
+                            final String text =
+                                (data['text'] as String?)?.trim() ?? '';
+                            final String songTitle =
+                                (data['title'] as String?)?.trim() ?? '';
+                            final String songArtist =
+                                (data['artist'] as String?)?.trim() ?? '';
+                            final String songName =
+                                (data['songName'] as String?)?.trim() ?? '';
+                            final String coverUrl =
+                                (data['coverUrl'] as String?)?.trim() ?? '';
+                            final String songUrl =
+                                (data['songUrl'] as String?)?.trim() ?? '';
+                            final String audioUrl = songUrl.isNotEmpty
+                                ? songUrl
+                                : (data['audioUrl'] as String?)?.trim() ?? '';
+                            final String audioData =
+                                (data['audioData'] as String?)?.trim() ?? '';
+                            final int songId =
+                                (data['songId'] as num?)?.toInt() ?? 0;
+                            final String resolvedSongTitle =
+                                songTitle.isNotEmpty ? songTitle : songName;
+                            final bool isSongMessage = messageType == 'song';
 
-                          if (!isSongMessage && text.isEmpty) {
-                            return const SizedBox.shrink();
-                          }
+                            if (!isSongMessage && text.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
 
-                          final bool isMine = senderUid == currentUserUid;
-                          final ThemeData theme = Theme.of(context);
-                          final Color myBubbleColor = theme.colorScheme.primary;
-                          const Color otherBubbleColor = Color(0xFFF1F1F1);
-                          final Color bubbleColor = isMine
-                              ? myBubbleColor
-                              : otherBubbleColor;
-                          final Color bubbleTextColor = isMine
-                              ? theme.colorScheme.onPrimary
-                              : Colors.black87;
-                          final bool isEdited = data['edited'] == true;
-                          final bool canEdit = isMine && !isSongMessage;
-                          final Map<String, dynamic> reactionMap =
-                              data['reactions'] is Map
-                              ? Map<String, dynamic>.from(
-                                  data['reactions'] as Map<dynamic, dynamic>,
-                                )
-                              : <String, dynamic>{};
-                          final List<String> reactions = reactionMap.values
-                              .whereType<String>()
-                              .map((emoji) => emoji.trim())
-                              .where((emoji) => emoji.isNotEmpty)
-                              .toList(growable: false);
+                            final String previousSenderUid = index > 0
+                                ? ((docs[index - 1].data()['senderUid']
+                                              as String?) ??
+                                          (docs[index - 1].data()['senderId']
+                                              as String?) ??
+                                          '')
+                                      .trim()
+                                : '';
+                            final String nextSenderUid = index + 1 < docs.length
+                                ? ((docs[index + 1].data()['senderUid']
+                                              as String?) ??
+                                          (docs[index + 1].data()['senderId']
+                                              as String?) ??
+                                          '')
+                                      .trim()
+                                : '';
+                            final bool groupedWithPrevious =
+                                previousSenderUid.isNotEmpty &&
+                                previousSenderUid == senderUid;
+                            final bool groupedWithNext =
+                                nextSenderUid.isNotEmpty &&
+                                nextSenderUid == senderUid;
+                            final DateTime? sentAt = _resolveMessageDateTime(
+                              data['createdAt'],
+                            );
+                            final String timeLabel = _formatMessageTime(
+                              context,
+                              sentAt,
+                            );
+                            final bool isMine = senderUid == currentUserUid;
+                            final ThemeData theme = Theme.of(context);
+                            final Color bubbleColor = isMine
+                                ? theme.colorScheme.primary.withValues(
+                                    alpha: 0.94,
+                                  )
+                                : theme.colorScheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.82);
+                            final Color bubbleTextColor = isMine
+                                ? theme.colorScheme.onPrimary
+                                : theme.colorScheme.onSurface;
+                            final bool isEdited = data['edited'] == true;
+                            final bool canEdit = isMine && !isSongMessage;
+                            final Map<String, dynamic> reactionMap =
+                                data['reactions'] is Map
+                                ? Map<String, dynamic>.from(
+                                    data['reactions'] as Map<dynamic, dynamic>,
+                                  )
+                                : <String, dynamic>{};
+                            final List<String> reactions = reactionMap.values
+                                .whereType<String>()
+                                .map((emoji) => emoji.trim())
+                                .where((emoji) => emoji.isNotEmpty)
+                                .toList(growable: false);
 
-                          final bool isSelected = _selectedMessageId == doc.id;
+                            final bool isSelected =
+                                _selectedMessageId == doc.id;
 
-                          return Align(
-                            alignment: isMine
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: GestureDetector(
-                              onLongPress: () {
-                                setState(() {
-                                  _selectedMessageId = doc.id;
-                                });
-                              },
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxWidth:
-                                      MediaQuery.of(context).size.width * 0.74,
-                                ),
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 4,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: isMine
-                                        ? CrossAxisAlignment.end
-                                        : CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: bubbleColor,
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment: isMine
-                                              ? CrossAxisAlignment.end
-                                              : CrossAxisAlignment.start,
-                                          children: <Widget>[
-                                            if (isSongMessage)
-                                              _buildSongMessageCard(
-                                                context: context,
-                                                chatId: resolvedChatId,
-                                                currentUserUid: currentUserUid,
-                                                messageId: doc.id,
-                                                isMine: isMine,
-                                                coverUrl: coverUrl,
-                                                audioUrl: audioUrl,
-                                                audioData: audioData,
-                                                songId: songId,
-                                                songTitle: resolvedSongTitle,
-                                                songArtist: songArtist,
-                                                songName: songName,
-                                                messageTextColor:
-                                                    bubbleTextColor,
-                                              )
-                                            else
-                                              Text(
-                                                text,
-                                                style: TextStyle(
-                                                  color: bubbleTextColor,
+                            return _AnimatedChatMessage(
+                              key: ValueKey<String>('message-${doc.id}'),
+                              child: Align(
+                                alignment: isMine
+                                    ? Alignment.centerRight
+                                    : Alignment.centerLeft,
+                                child: GestureDetector(
+                                  onTap: isSelected
+                                      ? () {
+                                          setState(() {
+                                            _selectedMessageId = null;
+                                          });
+                                        }
+                                      : null,
+                                  onLongPress: () {
+                                    setState(() {
+                                      _selectedMessageId = doc.id;
+                                    });
+                                  },
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth:
+                                          MediaQuery.of(context).size.width *
+                                          0.80,
+                                    ),
+                                    child: Container(
+                                      margin: EdgeInsets.only(
+                                        top: groupedWithPrevious ? 3 : 12,
+                                        bottom: groupedWithNext ? 3 : 10,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: isMine
+                                            ? CrossAxisAlignment.end
+                                            : CrossAxisAlignment.start,
+                                        children: <Widget>[
+                                          Container(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              15,
+                                              12,
+                                              15,
+                                              10,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: bubbleColor,
+                                              borderRadius: BorderRadius.only(
+                                                topLeft: Radius.circular(
+                                                  isMine
+                                                      ? 24
+                                                      : groupedWithPrevious
+                                                      ? 12
+                                                      : 24,
+                                                ),
+                                                topRight: Radius.circular(
+                                                  isMine
+                                                      ? groupedWithPrevious
+                                                            ? 12
+                                                            : 24
+                                                      : 24,
+                                                ),
+                                                bottomLeft: Radius.circular(
+                                                  isMine
+                                                      ? 24
+                                                      : groupedWithNext
+                                                      ? 12
+                                                      : 8,
+                                                ),
+                                                bottomRight: Radius.circular(
+                                                  isMine
+                                                      ? groupedWithNext
+                                                            ? 12
+                                                            : 8
+                                                      : 24,
                                                 ),
                                               ),
-                                            if (!isSongMessage &&
-                                                isEdited) ...<Widget>[
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                '(edited)',
-                                                style: Theme.of(context)
-                                                    .textTheme
-                                                    .labelSmall
-                                                    ?.copyWith(
-                                                      color: bubbleTextColor
-                                                          .withValues(
-                                                            alpha: 0.75,
-                                                          ),
-                                                    ),
+                                              border: Border.all(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withValues(alpha: 0.05),
                                               ),
-                                            ],
-                                          ],
-                                        ),
-                                      ),
-                                      if (reactions.isNotEmpty) ...<Widget>[
-                                        const SizedBox(height: 4),
-                                        Wrap(
-                                          spacing: 6,
-                                          runSpacing: 4,
-                                          children: reactions
-                                              .map(
-                                                (emoji) => Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 8,
-                                                        vertical: 3,
+                                              boxShadow: <BoxShadow>[
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withValues(
+                                                        alpha: isMine
+                                                            ? 0.16
+                                                            : 0.08,
                                                       ),
-                                                  decoration: BoxDecoration(
-                                                    color: Theme.of(
-                                                      context,
-                                                    ).cardColor,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          999,
+                                                  blurRadius: 16,
+                                                  offset: const Offset(0, 8),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: isMine
+                                                  ? CrossAxisAlignment.end
+                                                  : CrossAxisAlignment.start,
+                                              children: <Widget>[
+                                                if (isSongMessage)
+                                                  _buildSongMessageCard(
+                                                    context: context,
+                                                    chatId: resolvedChatId,
+                                                    currentUserUid:
+                                                        currentUserUid,
+                                                    messageId: doc.id,
+                                                    isMine: isMine,
+                                                    coverUrl: coverUrl,
+                                                    audioUrl: audioUrl,
+                                                    audioData: audioData,
+                                                    songId: songId,
+                                                    songTitle:
+                                                        resolvedSongTitle,
+                                                    songArtist: songArtist,
+                                                    songName: songName,
+                                                    messageTextColor:
+                                                        bubbleTextColor,
+                                                  )
+                                                else
+                                                  Text(
+                                                    text,
+                                                    style: theme
+                                                        .textTheme
+                                                        .bodyMedium
+                                                        ?.copyWith(
+                                                          color:
+                                                              bubbleTextColor,
+                                                          height: 1.52,
                                                         ),
                                                   ),
-                                                  child: Text(emoji),
-                                                ),
-                                              )
-                                              .toList(growable: false),
-                                        ),
-                                      ],
-                                      if (isSelected) ...<Widget>[
-                                        const SizedBox(height: 6),
-                                        Wrap(
-                                          spacing: 8,
-                                          children: <Widget>[
-                                            if (canEdit)
-                                              TextButton(
-                                                onPressed: () async {
-                                                  await _editMessage(
-                                                    chatId: resolvedChatId,
-                                                    messageId: doc.id,
-                                                    currentText: text,
-                                                  );
-                                                  if (mounted) {
-                                                    setState(() {
-                                                      _selectedMessageId = null;
-                                                    });
-                                                  }
-                                                },
-                                                child: const Text('Edit'),
-                                              ),
-                                            if (isMine)
-                                              TextButton(
-                                                onPressed: () async {
-                                                  await _deleteMessage(
-                                                    chatId: resolvedChatId,
-                                                    messageId: doc.id,
-                                                  );
-                                                  if (mounted) {
-                                                    setState(() {
-                                                      _selectedMessageId = null;
-                                                    });
-                                                  }
-                                                },
-                                                child: const Text('Delete'),
-                                              ),
-                                            Builder(
-                                              builder: (buttonContext) {
-                                                return TextButton(
-                                                  onPressed: () async {
-                                                    await _openReactionPicker(
-                                                      buttonContext:
-                                                          buttonContext,
-                                                      chatId: resolvedChatId,
-                                                      messageId: doc.id,
-                                                      currentUserUid:
-                                                          currentUserUid,
-                                                    );
-                                                    if (mounted) {
-                                                      setState(() {
-                                                        _selectedMessageId =
-                                                            null;
-                                                      });
-                                                    }
-                                                  },
-                                                  child: const Text('React'),
-                                                );
-                                              },
+                                                if (timeLabel.isNotEmpty ||
+                                                    isEdited) ...<Widget>[
+                                                  SizedBox(
+                                                    height: isSongMessage
+                                                        ? 10
+                                                        : 8,
+                                                  ),
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: <Widget>[
+                                                      if (isEdited)
+                                                        Text(
+                                                          'Edited',
+                                                          style: theme
+                                                              .textTheme
+                                                              .labelSmall
+                                                              ?.copyWith(
+                                                                color: bubbleTextColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.74,
+                                                                    ),
+                                                              ),
+                                                        ),
+                                                      if (isEdited &&
+                                                          timeLabel.isNotEmpty)
+                                                        const SizedBox(
+                                                          width: 8,
+                                                        ),
+                                                      if (timeLabel.isNotEmpty)
+                                                        Text(
+                                                          timeLabel,
+                                                          style: theme
+                                                              .textTheme
+                                                              .labelSmall
+                                                              ?.copyWith(
+                                                                color: bubbleTextColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.74,
+                                                                    ),
+                                                              ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          if (reactions.isNotEmpty) ...<Widget>[
+                                            const SizedBox(height: 6),
+                                            Wrap(
+                                              spacing: 6,
+                                              runSpacing: 4,
+                                              children: reactions
+                                                  .map(
+                                                    (emoji) => Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 4,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: theme
+                                                            .colorScheme
+                                                            .onSurface
+                                                            .withValues(
+                                                              alpha: 0.08,
+                                                            ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              999,
+                                                            ),
+                                                      ),
+                                                      child: Text(emoji),
+                                                    ),
+                                                  )
+                                                  .toList(growable: false),
                                             ),
                                           ],
-                                        ),
-                                      ],
-                                    ],
+                                          if (isSelected) ...<Widget>[
+                                            const SizedBox(height: 8),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 4,
+                                              children: <Widget>[
+                                                if (canEdit)
+                                                  TextButton(
+                                                    onPressed: () async {
+                                                      await _editMessage(
+                                                        chatId: resolvedChatId,
+                                                        messageId: doc.id,
+                                                        currentText: text,
+                                                      );
+                                                      if (mounted) {
+                                                        setState(() {
+                                                          _selectedMessageId =
+                                                              null;
+                                                        });
+                                                      }
+                                                    },
+                                                    child: const Text('Edit'),
+                                                  ),
+                                                if (isMine)
+                                                  TextButton(
+                                                    onPressed: () async {
+                                                      await _deleteMessage(
+                                                        chatId: resolvedChatId,
+                                                        messageId: doc.id,
+                                                      );
+                                                      if (mounted) {
+                                                        setState(() {
+                                                          _selectedMessageId =
+                                                              null;
+                                                        });
+                                                      }
+                                                    },
+                                                    child: const Text('Delete'),
+                                                  ),
+                                                Builder(
+                                                  builder: (buttonContext) {
+                                                    return TextButton(
+                                                      onPressed: () async {
+                                                        await _openReactionPicker(
+                                                          buttonContext:
+                                                              buttonContext,
+                                                          chatId:
+                                                              resolvedChatId,
+                                                          messageId: doc.id,
+                                                          currentUserUid:
+                                                              currentUserUid,
+                                                        );
+                                                        if (mounted) {
+                                                          setState(() {
+                                                            _selectedMessageId =
+                                                                null;
+                                                          });
+                                                        }
+                                                      },
+                                                      child: const Text(
+                                                        'React',
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                    child: Row(
-                      children: <Widget>[
-                        IconButton(
-                          onPressed: _isSending
-                              ? null
-                              : () => _openSongSelector(
-                                  chatId: resolvedChatId,
-                                  currentUserUid: currentUserUid,
-                                ),
-                          icon: _isSending
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.music_note),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: _messageController,
-                            minLines: 1,
-                            maxLines: 4,
-                            textInputAction: TextInputAction.newline,
-                            decoration: InputDecoration(
-                              hintText: 'Type a message...',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          onPressed: _isSending
-                              ? null
-                              : () => _sendMessage(
-                                  chatId: resolvedChatId,
-                                  currentUserUid: currentUserUid,
-                                ),
-                          icon: _isSending
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.send),
-                        ),
-                      ],
+                            );
+                          },
+                        );
+                      },
                     ),
                   ),
-                ),
-              ],
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 240),
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).cardColor.withValues(alpha: 0.96),
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(
+                            color: _isComposerFocused
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withValues(alpha: 0.36)
+                                : Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.08),
+                          ),
+                          boxShadow: <BoxShadow>[
+                            BoxShadow(
+                              color:
+                                  (_isComposerFocused
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                          : Colors.black)
+                                      .withValues(
+                                        alpha: _isComposerFocused ? 0.16 : 0.08,
+                                      ),
+                              blurRadius: _isComposerFocused ? 24 : 14,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: <Widget>[
+                            IconButton.filledTonal(
+                              onPressed: _isSending
+                                  ? null
+                                  : () => _openSongSelector(
+                                      chatId: resolvedChatId,
+                                      currentUserUid: currentUserUid,
+                                    ),
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(46, 46),
+                              ),
+                              icon: _isSending
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.music_note_rounded),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _messageController,
+                                focusNode: _messageFocusNode,
+                                minLines: 1,
+                                maxLines: 4,
+                                textInputAction: TextInputAction.newline,
+                                onChanged: (String value) =>
+                                    _handleTypingChanged(
+                                      chatId: resolvedChatId,
+                                      currentUserUid: currentUserUid,
+                                      value: value,
+                                    ),
+                                decoration: const InputDecoration(
+                                  hintText: 'Type a message...',
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  filled: false,
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton(
+                              onPressed: _isSending
+                                  ? null
+                                  : () => _sendMessage(
+                                      chatId: resolvedChatId,
+                                      currentUserUid: currentUserUid,
+                                    ),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(48, 48),
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
+                              child: _isSending
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.send_rounded),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
     );
   }

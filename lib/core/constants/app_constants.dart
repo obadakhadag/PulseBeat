@@ -8,6 +8,8 @@ class AppConstants {
   static const String playCountsKey = 'play_counts';
   static const String sortKey = 'library_sort';
   static const String groupKey = 'library_group';
+  static const String downloadedSongsKey = 'downloaded_songs';
+  static const String downloadedSongsFolder = 'downloaded_songs';
   static const String themeModeKey = 'theme_mode';
   static const String showLyricsKey = 'show_lyrics';
   static const String immersivePlayerKey = 'immersive_player';

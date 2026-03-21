@@ -81,7 +81,7 @@ class HomeBinding extends Bindings {
   void dependencies() {
     if (!Get.isRegistered<AudioRepository>()) {
       Get.lazyPut<AudioRepository>(
-        () => AudioRepository(OnAudioQuery()),
+        () => AudioRepository(OnAudioQuery(), Get.find<StorageService>()),
         fenix: true,
       );
     }

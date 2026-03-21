@@ -24,41 +24,40 @@ class SongListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.find<HomeController>();
+    final HomeController controller = Get.find<HomeController>();
 
     return RepaintBoundary(
-      child: Material(
-        color: Colors.transparent,
+      child: Card(
         child: InkWell(
-          borderRadius: BorderRadius.circular(26),
+          borderRadius: BorderRadius.circular(24),
           onTap: onTap,
-          child: Ink(
+          child: Padding(
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: context.colors.surface.withValues(
-                alpha: context.theme.brightness == Brightness.dark
-                    ? 0.58
-                    : 0.75,
-              ),
-              borderRadius: BorderRadius.circular(26),
-            ),
             child: Row(
               children: <Widget>[
                 SongArtwork(
                   songId: song.artworkId,
-                  width: 64,
-                  height: 64,
-                  borderRadius: BorderRadius.circular(18),
-                  size: 96,
-                  quality: 35,
+                  width: 66,
+                  height: 66,
+                  borderRadius: BorderRadius.circular(20),
+                  size: 128,
+                  quality: 40,
                   fallback: Container(
-                    height: 64,
-                    width: 64,
+                    width: 66,
+                    height: 66,
                     decoration: BoxDecoration(
-                      color: context.colors.primary.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(18),
+                      gradient: LinearGradient(
+                        colors: <Color>[
+                          context.colors.primary.withValues(alpha: 0.95),
+                          context.colors.secondary.withValues(alpha: 0.95),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Icon(Icons.music_note_rounded),
+                    child: const Icon(
+                      Icons.music_note_rounded,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -67,27 +66,29 @@ class SongListItem extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        song.title.ellipsis(30),
+                        song.title.ellipsis(32),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         subtitle ??
-                            '${song.artist.fallbackArtist} - ${song.album.ellipsis(16)}',
+                            '${song.artist.fallbackArtist} - ${song.album.ellipsis(18)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: context.theme.textTheme.bodySmall?.copyWith(
-                          color: context.colors.onSurfaceVariant,
+                        style: context.theme.textTheme.bodyMedium?.copyWith(
+                          color: context.colors.onSurface.withValues(
+                            alpha: 0.60,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[
@@ -99,22 +100,33 @@ class SongListItem extends StatelessWidget {
                           controller.isFavorite(song.id)
                               ? Icons.favorite_rounded
                               : Icons.favorite_border_rounded,
+                          color: controller.isFavorite(song.id)
+                              ? context.colors.tertiary
+                              : context.colors.onSurface.withValues(
+                                  alpha: 0.70,
+                                ),
                         ),
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    FilledButton(
+                      onPressed: onTap,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                        padding: const EdgeInsets.all(0),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Icon(Icons.play_arrow_rounded),
+                    ),
+                    const SizedBox(height: 6),
                     Text(
-                      song.duration.toClock(),
-                      style: context.theme.textTheme.labelMedium,
-                    ),
-                    if (trailingLabel != null)
-                      Text(
-                        trailingLabel!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.theme.textTheme.labelSmall?.copyWith(
-                          color: context.colors.onSurfaceVariant,
-                        ),
+                      trailingLabel ?? song.duration.toClock(),
+                      style: context.theme.textTheme.labelSmall?.copyWith(
+                        color: context.colors.onSurface.withValues(alpha: 0.60),
                       ),
+                    ),
                   ],
                 ),
               ],
