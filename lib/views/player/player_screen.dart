@@ -345,154 +345,129 @@ class _PlayerBody extends StatelessWidget {
                     alpha: isDark ? 0.94 : 0.97,
                   ),
                   child: LayoutBuilder(
-                    builder:
-                        (BuildContext context, BoxConstraints constraints) {
-                          final bool compactWidth = constraints.maxWidth < 360;
-                          final double artworkShellSize =
-                              (constraints.maxWidth < 430
-                                      ? constraints.maxWidth * 0.74
-                                      : 300.0)
-                                  .clamp(220.0, 300.0)
-                                  .toDouble();
-                          final double artworkSize = (artworkShellSize - 28)
-                              .clamp(192.0, 272.0)
+                    builder: (BuildContext context, BoxConstraints constraints) {
+                      final bool compactWidth = constraints.maxWidth < 360;
+                      final double artworkShellSize =
+                          (constraints.maxWidth < 430
+                                  ? constraints.maxWidth * 0.74
+                                  : 300.0)
+                              .clamp(220.0, 300.0)
                               .toDouble();
-                          final double sideButtonSize = compactWidth ? 50 : 58;
-                          final double utilityButtonSize = compactWidth
-                              ? 46
-                              : 52;
-                          final double mainButtonSize = compactWidth ? 74 : 84;
+                      final double artworkSize = (artworkShellSize - 28)
+                          .clamp(192.0, 272.0)
+                          .toDouble();
+                      final double sideButtonSize = compactWidth ? 50 : 58;
+                      final double utilityButtonSize = compactWidth ? 46 : 52;
+                      final double mainButtonSize = compactWidth ? 74 : 84;
 
-                          return SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(
-                              parent: AlwaysScrollableScrollPhysics(),
-                            ),
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                minHeight: constraints.maxHeight,
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  22,
-                                  24,
-                                  22,
-                                  22,
+                      return SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
+                            child: Column(
+                              children: <Widget>[
+                                Container(
+                                  width: artworkShellSize,
+                                  height: artworkShellSize,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      colors: <Color>[
+                                        context.colors.primary.withValues(
+                                          alpha: isDark ? 0.30 : 0.18,
+                                        ),
+                                        context.colors.tertiary.withValues(
+                                          alpha: isDark ? 0.12 : 0.06,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  child: ClipOval(
+                                    child: SongArtwork(
+                                      songId: song.artworkId,
+                                      artworkUri: song.artworkUri,
+                                      width: artworkSize,
+                                      height: artworkSize,
+                                      borderRadius: BorderRadius.circular(999),
+                                      size: 700,
+                                      quality: 90,
+                                      fallback: SongArtworkPlaceholder(
+                                        width: artworkSize,
+                                        height: artworkSize,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                        icon: Icons.album_rounded,
+                                        gradientColors: <Color>[
+                                          theme.colorScheme.primary.withValues(
+                                            alpha: isDark ? 0.72 : 0.86,
+                                          ),
+                                          theme.colorScheme.tertiary.withValues(
+                                            alpha: 0.82,
+                                          ),
+                                          theme.colorScheme.secondary
+                                              .withValues(alpha: 0.90),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                                child: Column(
+                                const SizedBox(height: 26),
+                                Text(
+                                  song.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(
+                                        color: panelForeground,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  song.artist.fallbackArtist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: panelForeground.withValues(
+                                      alpha: 0.72,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                Obx(
+                                  () => SeekBar(
+                                    position: controller.position.value,
+                                    total: controller.total.value,
+                                    onChanged: (_) {},
+                                    onChangeEnd: (double value) =>
+                                        controller.seek(
+                                          Duration(milliseconds: value.toInt()),
+                                        ),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Column(
                                   children: <Widget>[
-                                    Container(
-                                      width: artworkShellSize,
-                                      height: artworkShellSize,
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: LinearGradient(
-                                          colors: <Color>[
-                                            context.colors.primary.withValues(
-                                              alpha: isDark ? 0.30 : 0.18,
-                                            ),
-                                            context.colors.tertiary.withValues(
-                                              alpha: isDark ? 0.12 : 0.06,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      child: ClipOval(
-                                        child: SongArtwork(
-                                          songId: song.artworkId,
-                                          artworkUri: song.artworkUri,
-                                          width: artworkSize,
-                                          height: artworkSize,
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                          size: 700,
-                                          quality: 90,
-                                          fallback: SongArtworkPlaceholder(
-                                            width: artworkSize,
-                                            height: artworkSize,
-                                            borderRadius: BorderRadius.circular(
-                                              999,
-                                            ),
-                                            icon: Icons.album_rounded,
-                                            gradientColors: <Color>[
-                                              theme.colorScheme.primary
-                                                  .withValues(
-                                                    alpha: isDark ? 0.72 : 0.86,
-                                                  ),
-                                              theme.colorScheme.tertiary
-                                                  .withValues(alpha: 0.82),
-                                              theme.colorScheme.secondary
-                                                  .withValues(alpha: 0.90),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 26),
-                                    Text(
-                                      song.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: theme.textTheme.headlineSmall
-                                          ?.copyWith(
-                                            color: panelForeground,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      song.artist.fallbackArtist,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            color: panelForeground.withValues(
-                                              alpha: 0.72,
-                                            ),
-                                          ),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    Obx(
-                                      () => SeekBar(
-                                        position: controller.position.value,
-                                        total: controller.total.value,
-                                        onChanged: (_) {},
-                                        onChangeEnd: (double value) =>
-                                            controller.seek(
-                                              Duration(
-                                                milliseconds: value.toInt(),
-                                              ),
-                                            ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    Wrap(
-                                      alignment: WrapAlignment.center,
-                                      spacing: compactWidth ? 8 : 14,
-                                      runSpacing: 12,
-                                      crossAxisAlignment:
-                                          WrapCrossAlignment.center,
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: <Widget>[
-                                        Obx(
-                                          () => _RoundPlayerButton(
-                                            onPressed: controller.toggleShuffle,
-                                            icon:
-                                                controller.shuffleEnabled.value
-                                                ? Icons.shuffle_on_rounded
-                                                : Icons.shuffle_rounded,
-                                            size: utilityButtonSize,
-                                            isActive:
-                                                controller.shuffleEnabled.value,
-                                          ),
-                                        ),
                                         _RoundPlayerButton(
                                           onPressed: controller.previous,
                                           icon: Icons.skip_previous_rounded,
                                           size: sideButtonSize,
                                         ),
+                                        SizedBox(width: compactWidth ? 12 : 18),
                                         Obx(
                                           () => Container(
                                             decoration: BoxDecoration(
@@ -523,11 +498,32 @@ class _PlayerBody extends StatelessWidget {
                                             ),
                                           ),
                                         ),
+                                        SizedBox(width: compactWidth ? 12 : 18),
                                         _RoundPlayerButton(
                                           onPressed: controller.next,
                                           icon: Icons.skip_next_rounded,
                                           size: sideButtonSize,
                                         ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: <Widget>[
+                                        Obx(
+                                          () => _RoundPlayerButton(
+                                            onPressed: controller.toggleShuffle,
+                                            icon:
+                                                controller.shuffleEnabled.value
+                                                ? Icons.shuffle_on_rounded
+                                                : Icons.shuffle_rounded,
+                                            size: utilityButtonSize,
+                                            isActive:
+                                                controller.shuffleEnabled.value,
+                                          ),
+                                        ),
+                                        SizedBox(width: compactWidth ? 12 : 16),
                                         Obx(
                                           () => _RoundPlayerButton(
                                             onPressed: controller.cycleLoopMode,
@@ -549,37 +545,37 @@ class _PlayerBody extends StatelessWidget {
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 18),
-                                    Align(
-                                      alignment: Alignment.center,
-                                      child: Obx(
-                                        () => OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _openLyricsSheet(context),
-                                          icon: const Icon(
-                                            Icons.lyrics_rounded,
-                                          ),
-                                          label: Text(
-                                            controller.isLoadingLyrics.value
-                                                ? 'Loading...'.tr
-                                                : 'Lyrics'.tr,
-                                          ),
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: panelForeground,
-                                            backgroundColor: panelForeground
-                                                .withValues(
-                                                  alpha: isDark ? 0.08 : 0.04,
-                                                ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
                                   ],
                                 ),
-                              ),
+                                const SizedBox(height: 18),
+                                Align(
+                                  alignment: Alignment.center,
+                                  child: Obx(
+                                    () => OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _openLyricsSheet(context),
+                                      icon: const Icon(Icons.lyrics_rounded),
+                                      label: Text(
+                                        controller.isLoadingLyrics.value
+                                            ? 'Loading...'.tr
+                                            : 'Lyrics'.tr,
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: panelForeground,
+                                        backgroundColor: panelForeground
+                                            .withValues(
+                                              alpha: isDark ? 0.08 : 0.04,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          );
-                        },
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

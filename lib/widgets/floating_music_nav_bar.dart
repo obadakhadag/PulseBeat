@@ -27,7 +27,7 @@ class FloatingMusicNavBar extends StatelessWidget {
       _NavItem(
         route: AppPages.collection,
         icon: Icons.library_music_rounded,
-        label: 'Collection',
+        label: 'Collectio',
       ),
       _NavItem(
         route: AppPages.chatList,

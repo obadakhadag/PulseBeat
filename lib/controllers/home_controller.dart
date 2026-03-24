@@ -181,14 +181,13 @@ class HomeController extends GetxController {
   }
 
   void toggleFavorite(SongModel song) {
-    final updated = favoriteIds.toSet();
-    if (!updated.add(song.id)) {
-      updated.remove(song.id);
+    if (favoriteIds.contains(song.id)) {
+      favoriteIds.remove(song.id);
+    } else {
+      favoriteIds.add(song.id);
     }
-    favoriteIds
-      ..clear()
-      ..addAll(updated);
-    _storageService.setFavoriteIds(updated);
+    favoriteIds.refresh();
+    _storageService.setFavoriteIds(favoriteIds.toSet());
   }
 
   Future<void> playSong(SongModel song) async {
