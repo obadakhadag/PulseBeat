@@ -1,13 +1,16 @@
 // ignore_for_file: avoid_print
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/bindings/app_bindings.dart';
 import 'core/constants/app_constants.dart';
 import 'core/themes/app_theme.dart';
+import 'localization/app_translations.dart';
 import 'routes/app_pages.dart';
+import 'services/storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,11 +24,31 @@ Future<void> main() async {
 
   print('Supabase initialized successfully');
 
-  runApp(const MyApp());
+  final StorageService storageService = StorageService(AppConstants.storageBox);
+  await storageService.ensureInitialized();
+  final ThemeMode initialThemeMode = switch (storageService.getThemeMode()) {
+    'light' => ThemeMode.light,
+    'system' => ThemeMode.system,
+    _ => ThemeMode.dark,
+  };
+  final Locale initialLocale = AppTranslations.resolveLocale(
+    storageService.getLanguageCode(),
+  );
+
+  runApp(
+    MyApp(initialThemeMode: initialThemeMode, initialLocale: initialLocale),
+  );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({
+    super.key,
+    required this.initialThemeMode,
+    required this.initialLocale,
+  });
+
+  final ThemeMode initialThemeMode;
+  final Locale initialLocale;
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +57,16 @@ class MyApp extends StatelessWidget {
       title: AppConstants.appName,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark,
+      themeMode: initialThemeMode,
+      translations: AppTranslations(),
+      locale: initialLocale,
+      fallbackLocale: AppTranslations.fallbackLocale,
+      supportedLocales: AppTranslations.supportedLocales,
+      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       getPages: AppPages.pages,
       initialRoute: AppPages.splash,
       initialBinding: InitialBinding(),

@@ -18,6 +18,8 @@ enum LibraryGroup { folder, titleLanguage, artist }
 
 enum HomeSection { all, favorites, recents, mostPlayed }
 
+enum HomeBrowseCategory { allSongs, folders, language, artist }
+
 abstract class LibraryEntry {
   const LibraryEntry();
 }
@@ -38,6 +40,23 @@ class LibrarySongEntry extends LibraryEntry {
   const LibrarySongEntry(this.song);
 
   final SongModel song;
+}
+
+class LibraryCollectionGroup {
+  const LibraryCollectionGroup({
+    required this.key,
+    required this.title,
+    required this.songs,
+    this.subtitle,
+  });
+
+  final String key;
+  final String title;
+  final String? subtitle;
+  final List<SongModel> songs;
+
+  int get count => songs.length;
+  SongModel? get previewSong => songs.isEmpty ? null : songs.first;
 }
 
 class HomeController extends GetxController {
@@ -66,6 +85,7 @@ class HomeController extends GetxController {
   final Rx<LibrarySort> sort = LibrarySort.newest.obs;
   final Rx<LibraryGroup> group = LibraryGroup.folder.obs;
   final Rx<HomeSection> section = HomeSection.all.obs;
+  final Rx<HomeBrowseCategory> browseCategory = HomeBrowseCategory.allSongs.obs;
   final RxList<LibraryEntry> libraryEntries = <LibraryEntry>[].obs;
   final RxBool showScrollToTop = false.obs;
   final ScrollController scrollController = ScrollController();
@@ -137,6 +157,8 @@ class HomeController extends GetxController {
 
   void updateSearch(String value) => searchQuery.value = value;
   void setSection(HomeSection value) => section.value = value;
+  void setBrowseCategory(HomeBrowseCategory value) =>
+      browseCategory.value = value;
 
   void setSort(LibrarySort value) {
     sort.value = value;
@@ -153,7 +175,9 @@ class HomeController extends GetxController {
 
   String playCountLabel(int songId) {
     final count = playCountFor(songId);
-    return count == 1 ? '1 play' : '$count plays';
+    return count == 1
+        ? '1 play'.tr
+        : '@count plays'.trParams(<String, String>{'count': '$count'});
   }
 
   void toggleFavorite(SongModel song) {
@@ -171,8 +195,18 @@ class HomeController extends GetxController {
     final List<SongModel> activeQueue = visibleSongs.isNotEmpty
         ? visibleSongs.toList(growable: false)
         : songs.toList(growable: false);
-    await _playerController.playFromQueue(activeQueue, song);
-    _rememberRecent(song.id);
+    await playSongFromQueue(activeQueue, song);
+  }
+
+  Future<void> playSongFromQueue(
+    List<SongModel> songQueue,
+    SongModel selectedSong,
+  ) async {
+    final List<SongModel> activeQueue = songQueue.isNotEmpty
+        ? songQueue.toList(growable: false)
+        : songs.toList(growable: false);
+    await _playerController.playFromQueue(activeQueue, selectedSong);
+    _rememberRecent(selectedSong.id);
     Get.toNamed(AppPages.player);
   }
 
@@ -188,6 +222,34 @@ class HomeController extends GetxController {
 
   List<SongModel> get featuredSongs =>
       visibleSongs.take(5).toList(growable: false);
+
+  List<LibraryCollectionGroup> collectionGroupsFor(
+    HomeBrowseCategory category,
+  ) {
+    final List<SongModel> source = visibleSongs.toList(growable: false);
+    return switch (category) {
+      HomeBrowseCategory.allSongs => const <LibraryCollectionGroup>[],
+      HomeBrowseCategory.folders => _buildCollectionGroups(
+        source: source,
+        keyOf: (SongModel song) =>
+            song.folderPath.isEmpty ? 'unknown-folder' : song.folderPath,
+        titleOf: (String key) =>
+            key == 'unknown-folder' ? 'Unknown folder'.tr : key.split('/').last,
+        subtitleOf: (String key) => key == 'unknown-folder' ? null : key,
+      ),
+      HomeBrowseCategory.language => _buildLanguageCollectionGroups(source),
+      HomeBrowseCategory.artist => _buildCollectionGroups(
+        source: source,
+        keyOf: (SongModel song) {
+          final String artist = song.artist.trim();
+          return artist.isEmpty || artist == '<unknown>' ? '<unknown>' : artist;
+        },
+        titleOf: (String key) => key == '<unknown>' ? 'Unknown Artist'.tr : key,
+      ),
+    };
+  }
+
+  void refreshPresentation() => _applyFilters();
 
   SongModel? findSongById(int id) {
     for (final song in songs) {
@@ -306,13 +368,13 @@ class HomeController extends GetxController {
   String _groupTitle(String key) {
     return switch (group.value) {
       LibraryGroup.folder =>
-        key == 'unknown-folder' ? 'Unknown folder' : key.split('/').last,
+        key == 'unknown-folder' ? 'Unknown folder'.tr : key.split('/').last,
       LibraryGroup.titleLanguage => switch (key) {
-        'arabic' => 'Arabic titles',
-        'english' => 'English titles',
-        _ => 'Other titles',
+        'arabic' => 'Arabic tracks'.tr,
+        'english' => 'English tracks'.tr,
+        _ => 'Other tracks'.tr,
       },
-      LibraryGroup.artist => key == '<unknown>' ? 'Unknown Artist' : key,
+      LibraryGroup.artist => key == '<unknown>' ? 'Unknown Artist'.tr : key,
     };
   }
 
@@ -320,9 +382,9 @@ class HomeController extends GetxController {
     return switch (group.value) {
       LibraryGroup.folder => key == 'unknown-folder' ? null : key,
       LibraryGroup.titleLanguage => switch (key) {
-        'arabic' => 'Tracks with Arabic script in the title',
-        'english' => 'Tracks with Latin script in the title',
-        _ => 'Tracks without clear Arabic or English letters',
+        'arabic' => 'Tracks grouped by Arabic metadata.'.tr,
+        'english' => 'Tracks grouped by English metadata.'.tr,
+        _ => 'Tracks without clear Arabic or English metadata.'.tr,
       },
       LibraryGroup.artist => null,
     };
@@ -332,7 +394,13 @@ class HomeController extends GetxController {
     final totalTracks = songs.length;
     final favCount = favoriteIds.length;
     final plays = totalPlayCount;
-    return '$totalTracks tracks - $favCount favorites - $plays plays';
+    return '@tracks tracks - @favorites favorites - @plays plays'.trParams(
+      <String, String>{
+        'tracks': '$totalTracks',
+        'favorites': '$favCount',
+        'plays': '$plays',
+      },
+    );
   }
 
   int get totalPlayCount {
@@ -344,57 +412,57 @@ class HomeController extends GetxController {
 
   String get headline {
     return switch (section.value) {
-      HomeSection.all => 'Fresh from your device',
-      HomeSection.favorites => 'Your saved essentials',
-      HomeSection.recents => 'Recently played heat',
-      HomeSection.mostPlayed => 'Heavy rotation',
+      HomeSection.all => 'Fresh from your device'.tr,
+      HomeSection.favorites => 'Your saved essentials'.tr,
+      HomeSection.recents => 'Recently played heat'.tr,
+      HomeSection.mostPlayed => 'Heavy rotation'.tr,
     };
   }
 
   String get sectionLabel {
     return switch (section.value) {
-      HomeSection.all => 'All songs',
-      HomeSection.favorites => 'Favorites',
-      HomeSection.recents => 'Recents',
-      HomeSection.mostPlayed => 'Most played',
+      HomeSection.all => 'All Songs'.tr,
+      HomeSection.favorites => 'Favorites'.tr,
+      HomeSection.recents => 'Recents'.tr,
+      HomeSection.mostPlayed => 'Most played'.tr,
     };
   }
 
   String get groupLabel {
     return switch (group.value) {
-      LibraryGroup.folder => 'Folder',
-      LibraryGroup.titleLanguage => 'Title language',
-      LibraryGroup.artist => 'Artist',
+      LibraryGroup.folder => 'Folder'.tr,
+      LibraryGroup.titleLanguage => 'Language'.tr,
+      LibraryGroup.artist => 'Artist'.tr,
     };
   }
 
   String get sortLabel {
     if (section.value == HomeSection.mostPlayed) {
-      return 'Play count';
+      return 'Plays'.tr;
     }
     return switch (sort.value) {
-      LibrarySort.newest => 'Newest',
-      LibrarySort.title => 'Title',
-      LibrarySort.artist => 'Artist',
-      LibrarySort.duration => 'Duration',
+      LibrarySort.newest => 'Newest'.tr,
+      LibrarySort.title => 'Title'.tr,
+      LibrarySort.artist => 'Artist'.tr,
+      LibrarySort.duration => 'Duration'.tr,
     };
   }
 
   String get subline {
     if (!permissionGranted.value) {
-      return 'Allow audio access to build your library.';
+      return 'Allow audio access to build your library.'.tr;
     }
     if (songs.isEmpty) {
-      return 'No audio files found yet.';
+      return 'No audio files found yet.'.tr;
     }
     if (section.value == HomeSection.mostPlayed) {
-      return 'Songs ranked by how often you start them.';
+      return 'Songs ranked by how often you start them.'.tr;
     }
     return statsLabel;
   }
 
   void showRefreshedToast() {
-    AppHelpers.showToast('Library refreshed');
+    AppHelpers.showToast('Library refreshed'.tr);
   }
 
   Future<void> scrollToTop() async {
@@ -433,6 +501,80 @@ class HomeController extends GetxController {
       }
     }
     return true;
+  }
+
+  List<LibraryCollectionGroup> _buildCollectionGroups({
+    required List<SongModel> source,
+    required String Function(SongModel song) keyOf,
+    required String Function(String key) titleOf,
+    String? Function(String key)? subtitleOf,
+  }) {
+    if (source.isEmpty) {
+      return const <LibraryCollectionGroup>[];
+    }
+
+    final Map<String, List<SongModel>> groupedSongs =
+        <String, List<SongModel>>{};
+    for (final SongModel song in source) {
+      groupedSongs.putIfAbsent(keyOf(song), () => <SongModel>[]).add(song);
+    }
+
+    final List<String> orderedKeys = groupedSongs.keys.toList(growable: false)
+      ..sort((String a, String b) {
+        return titleOf(a).toLowerCase().compareTo(titleOf(b).toLowerCase());
+      });
+
+    return orderedKeys
+        .map((String key) {
+          final List<SongModel> songsForKey =
+              groupedSongs[key] ?? const <SongModel>[];
+          return LibraryCollectionGroup(
+            key: key,
+            title: titleOf(key),
+            subtitle: subtitleOf?.call(key),
+            songs: songsForKey.toList(growable: false),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  List<LibraryCollectionGroup> _buildLanguageCollectionGroups(
+    List<SongModel> source,
+  ) {
+    if (source.isEmpty) {
+      return const <LibraryCollectionGroup>[];
+    }
+
+    final Map<String, List<SongModel>> groupedSongs =
+        <String, List<SongModel>>{};
+    for (final SongModel song in source) {
+      groupedSongs
+          .putIfAbsent(song.titleLanguageKey, () => <SongModel>[])
+          .add(song);
+    }
+
+    const List<String> order = <String>['arabic', 'english', 'other'];
+    return order
+        .where(groupedSongs.containsKey)
+        .map((String key) {
+          final List<SongModel> songsForKey =
+              groupedSongs[key] ?? const <SongModel>[];
+          return LibraryCollectionGroup(
+            key: key,
+            title: switch (key) {
+              'arabic' => 'Arabic'.tr,
+              'english' => 'English'.tr,
+              _ => 'Other'.tr,
+            },
+            subtitle: switch (key) {
+              'arabic' => 'Tracks grouped by Arabic metadata.'.tr,
+              'english' => 'Tracks grouped by English metadata.'.tr,
+              _ => 'Tracks without clear Arabic or English metadata.'.tr,
+            },
+            songs: songsForKey.toList(growable: false),
+          );
+        })
+        .toList(growable: false);
   }
 
   @override

@@ -12,7 +12,8 @@ class StorageService {
 
   Future<void> ensureInitialized() {
     _initialization ??= _initialize();
-    return _initialization!;
+    final Future<void>? initialization = _initialization;
+    return initialization ?? Future<void>.value();
   }
 
   Future<void> _initialize() async {
@@ -181,5 +182,12 @@ class StorageService {
 
   void setThemeMode(String value) {
     _maybeBox?.write(AppConstants.themeModeKey, value);
+  }
+
+  String getLanguageCode() =>
+      _maybeBox?.read<String>(AppConstants.languageCodeKey) ?? 'en';
+
+  void setLanguageCode(String value) {
+    _maybeBox?.write(AppConstants.languageCodeKey, value);
   }
 }

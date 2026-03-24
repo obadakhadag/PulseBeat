@@ -15,9 +15,9 @@ class AppHelpers {
     final random = Random(seed);
     final hueA = random.nextDouble() * 360;
     final hueB = (hueA + 55 + random.nextDouble() * 70) % 360;
-    final saturation = brightness == Brightness.dark ? 0.62 : 0.72;
-    final lightnessA = brightness == Brightness.dark ? 0.30 : 0.64;
-    final lightnessB = brightness == Brightness.dark ? 0.20 : 0.52;
+    final saturation = brightness == Brightness.dark ? 0.70 : 0.78;
+    final lightnessA = brightness == Brightness.dark ? 0.38 : 0.70;
+    final lightnessB = brightness == Brightness.dark ? 0.28 : 0.58;
 
     return LinearGradient(
       begin: Alignment.topLeft,

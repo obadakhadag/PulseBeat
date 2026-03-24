@@ -105,11 +105,12 @@ class AuthController extends GetxController {
         email: email,
         password: password,
       );
-      if (credential.user == null) {
+      final User? signedInUser = credential.user;
+      if (signedInUser == null) {
         Get.snackbar('Login failed', 'Unable to login with email/password.');
         return;
       }
-      await _onLoginSuccess(credential.user!);
+      await _onLoginSuccess(signedInUser);
     } on FirebaseAuthException catch (error) {
       Get.snackbar(
         'Login failed',
@@ -141,11 +142,12 @@ class AuthController extends GetxController {
         email: email,
         password: password,
       );
-      if (credential.user == null) {
+      final User? signedInUser = credential.user;
+      if (signedInUser == null) {
         Get.snackbar('Signup failed', 'Unable to create account.');
         return;
       }
-      await _onLoginSuccess(credential.user!);
+      await _onLoginSuccess(signedInUser);
     } on FirebaseAuthException catch (error) {
       Get.snackbar(
         'Signup failed',
@@ -160,17 +162,18 @@ class AuthController extends GetxController {
 
   Future<void> loadProfile() async {
     final User? firebaseUser = currentUser;
-    final String? userId = firebaseUser?.uid;
-    if (userId == null || userId.isEmpty) {
+    if (firebaseUser == null || firebaseUser.uid.isEmpty) {
       userProfile.value = null;
       return;
     }
 
     isProfileLoading.value = true;
     try {
-      final UserModel? existing = await _userService.getUserProfile(userId);
+      final UserModel? existing = await _userService.getUserProfile(
+        firebaseUser.uid,
+      );
       userProfile.value =
-          existing ?? await _userService.ensureUserProfile(firebaseUser!);
+          existing ?? await _userService.ensureUserProfile(firebaseUser);
     } finally {
       isProfileLoading.value = false;
     }

@@ -18,6 +18,8 @@ class SeekBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
     final double max = total.inMilliseconds <= 0
         ? 1
         : total.inMilliseconds.toDouble();
@@ -29,15 +31,13 @@ class SeekBar extends StatelessWidget {
       children: <Widget>[
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            trackHeight: 5,
-            activeTrackColor: Theme.of(context).colorScheme.onSurface,
-            inactiveTrackColor: Theme.of(
-              context,
-            ).colorScheme.onSurface.withValues(alpha: 0.18),
-            thumbColor: Theme.of(context).colorScheme.secondary,
-            overlayColor: Theme.of(
-              context,
-            ).colorScheme.secondary.withValues(alpha: 0.14),
+            trackHeight: 6,
+            activeTrackColor: theme.colorScheme.secondary,
+            inactiveTrackColor: theme.colorScheme.onSurface.withValues(
+              alpha: isDark ? 0.18 : 0.12,
+            ),
+            thumbColor: isDark ? Colors.white : theme.colorScheme.secondary,
+            overlayColor: theme.colorScheme.secondary.withValues(alpha: 0.18),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
           ),
           child: Slider(
@@ -52,19 +52,19 @@ class SeekBar extends StatelessWidget {
           children: <Widget>[
             Text(
               position.toClock(),
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.70),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(
+                  alpha: isDark ? 0.74 : 0.68,
+                ),
               ),
             ),
             const Spacer(),
             Text(
               total.toClock(),
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurface.withValues(alpha: 0.70),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(
+                  alpha: isDark ? 0.74 : 0.68,
+                ),
               ),
             ),
           ],

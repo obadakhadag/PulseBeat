@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../localization/app_translations.dart';
 import '../services/storage_service.dart';
+import 'home_controller.dart';
 
 class SettingsController extends GetxController {
   SettingsController(this._storageService);
@@ -11,6 +13,7 @@ class SettingsController extends GetxController {
   final StorageService _storageService;
 
   final Rx<ThemeMode> themeMode = ThemeMode.dark.obs;
+  final Rx<Locale> appLocale = AppTranslations.fallbackLocale.obs;
   final RxBool showLyrics = true.obs;
   final RxBool immersivePlayer = true.obs;
 
@@ -30,6 +33,10 @@ class SettingsController extends GetxController {
       _ => ThemeMode.dark,
     };
     Get.changeThemeMode(themeMode.value);
+    appLocale.value = AppTranslations.resolveLocale(
+      _storageService.getLanguageCode(),
+    );
+    await Get.updateLocale(appLocale.value);
     showLyrics.value = _storageService.getShowLyrics();
     immersivePlayer.value = _storageService.getImmersivePlayer();
   }
@@ -55,5 +62,16 @@ class SettingsController extends GetxController {
     await _storageService.ensureInitialized();
     immersivePlayer.value = value;
     _storageService.setImmersivePlayer(value);
+  }
+
+  Future<void> setLanguageCode(String languageCode) async {
+    await _storageService.ensureInitialized();
+    final Locale locale = AppTranslations.resolveLocale(languageCode);
+    appLocale.value = locale;
+    _storageService.setLanguageCode(locale.languageCode);
+    await Get.updateLocale(locale);
+    if (Get.isRegistered<HomeController>()) {
+      Get.find<HomeController>().refreshPresentation();
+    }
   }
 }

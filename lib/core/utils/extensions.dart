@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 extension DurationFormatting on Duration {
   String toClock() {
@@ -19,7 +20,7 @@ extension BuildContextX on BuildContext {
 
 extension StringFormatting on String {
   String get fallbackArtist =>
-      trim().isEmpty || this == '<unknown>' ? 'Unknown Artist' : this;
+      trim().isEmpty || this == '<unknown>' ? 'Unknown Artist'.tr : this;
 
   String ellipsis([int limit = 36]) {
     if (length <= limit) {

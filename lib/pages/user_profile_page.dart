@@ -61,7 +61,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ),
             child: ListTile(
               leading: const Icon(Icons.person_remove_rounded),
-              title: const Text('Unfollow'),
+              title: Text('Unfollow'.tr),
               onTap: () => Navigator.of(context).pop('unfollow'),
             ),
           ),
@@ -87,7 +87,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   Widget build(BuildContext context) {
     final String? uid = _uid;
     if (uid == null || uid.isEmpty) {
-      return const Scaffold(body: Center(child: Text('User not found.')));
+      return Scaffold(body: Center(child: Text('User not found.'.tr)));
     }
 
     return Scaffold(
@@ -102,17 +102,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              if (!snapshot.hasData || !snapshot.data!.exists) {
-                return const Center(child: Text('User not found.'));
+              final DocumentSnapshot<Map<String, dynamic>>? document =
+                  snapshot.data;
+              final Map<String, dynamic>? rawData = document?.data();
+              if (document == null || !document.exists || rawData == null) {
+                return Center(child: Text('User not found.'.tr));
               }
 
               final Map<String, dynamic> data = Map<String, dynamic>.from(
-                snapshot.data!.data() ?? <String, dynamic>{},
+                rawData,
               );
               final String displayName =
                   (data['displayName'] as String?)?.trim().isNotEmpty == true
                   ? (data['displayName'] as String).trim()
-                  : 'No display name';
+                  : 'No display name'.tr;
               final String username =
                   (data['username'] as String?)?.trim().isNotEmpty == true
                   ? (data['username'] as String).trim()
@@ -137,7 +140,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'User Profile',
+                          'User Profile'.tr,
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
@@ -179,7 +182,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             children: <Widget>[
                               Expanded(
                                 child: _CounterCard(
-                                  label: 'Followers',
+                                  label: 'Followers'.tr,
                                   value: followersCount,
                                   onTap: () => Navigator.push(
                                     context,
@@ -193,7 +196,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: _CounterCard(
-                                  label: 'Following',
+                                  label: 'Following'.tr,
                                   value: followingCount,
                                   onTap: () => Navigator.push(
                                     context,
@@ -225,17 +228,17 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                     icon: const Icon(
                                       Icons.keyboard_arrow_down_rounded,
                                     ),
-                                    label: const Text('Following'),
+                                    label: Text('Following'.tr),
                                   ),
                                 );
                               }
 
                               if (status == 'requested') {
-                                return const SizedBox(
+                                return SizedBox(
                                   width: double.infinity,
                                   child: FilledButton(
                                     onPressed: null,
-                                    child: Text('Requested'),
+                                    child: Text('Requested'.tr),
                                   ),
                                 );
                               }
@@ -246,7 +249,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                   onPressed: isBusy
                                       ? null
                                       : () => _followController.followUser(uid),
-                                  child: const Text('Follow'),
+                                  child: Text('Follow'.tr),
                                 ),
                               );
                             }),
@@ -277,7 +280,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                       : const Icon(
                                           Icons.chat_bubble_outline_rounded,
                                         ),
-                                  label: const Text('Message'),
+                                  label: Text('Message'.tr),
                                 ),
                               );
                             }),
@@ -294,13 +297,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
                           Text(
-                            'Bio',
+                            'Bio'.tr,
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(fontWeight: FontWeight.w800),
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            bio.isEmpty ? 'No bio yet' : bio,
+                            bio.isEmpty ? 'No bio yet'.tr : bio,
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(
                                   color: Theme.of(context).colorScheme.onSurface

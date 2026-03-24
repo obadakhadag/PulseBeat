@@ -42,10 +42,7 @@ class SupabaseDebugService {
           .uploadBinary(
             fileName,
             bytes,
-            fileOptions: const FileOptions(
-              cacheControl: '3600',
-              upsert: false,
-            ),
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
           );
 
       print('STEP 8: Upload response received');
@@ -67,6 +64,36 @@ class SupabaseDebugService {
       print('SUPABASE STORAGE STACK TRACE:');
       print(stackTrace.toString());
 
+      return null;
+    }
+  }
+
+  static Future<String?> uploadArtworkDebug(
+    Uint8List bytes, {
+    String fileExtension = 'jpg',
+  }) async {
+    if (bytes.isEmpty) {
+      return null;
+    }
+
+    try {
+      final String path =
+          'covers/cover_${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+
+      await supabase.storage
+          .from('songs')
+          .uploadBinary(
+            path,
+            bytes,
+            fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+          );
+
+      return supabase.storage.from('songs').getPublicUrl(path);
+    } catch (e, stackTrace) {
+      print('SUPABASE ARTWORK UPLOAD ERROR:');
+      print(e.toString());
+      print('SUPABASE ARTWORK STACK TRACE:');
+      print(stackTrace.toString());
       return null;
     }
   }

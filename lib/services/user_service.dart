@@ -14,6 +14,7 @@ class UserService {
 
   Future<void> createUserProfile(User firebaseUser) async {
     final String email = firebaseUser.email ?? '';
+    final String? trimmedDisplayName = firebaseUser.displayName?.trim();
     final String username = _usernameFromEmail(
       email: email,
       uid: firebaseUser.uid,
@@ -23,9 +24,9 @@ class UserService {
       uid: firebaseUser.uid,
       email: email,
       username: username,
-      displayName: firebaseUser.displayName?.trim().isNotEmpty == true
-          ? firebaseUser.displayName!.trim()
-          : username,
+      displayName: trimmedDisplayName == null || trimmedDisplayName.isEmpty
+          ? username
+          : trimmedDisplayName,
       photoUrl: firebaseUser.photoURL ?? '',
       bio: '',
       isPrivate: false,
@@ -45,12 +46,13 @@ class UserService {
   Future<UserModel?> getUserProfile(String uid) async {
     final DocumentSnapshot<Map<String, dynamic>> snapshot =
         await _usersCollection.doc(uid).get();
+    final Map<String, dynamic>? rawData = snapshot.data();
 
-    if (!snapshot.exists || snapshot.data() == null) {
+    if (!snapshot.exists || rawData == null) {
       return null;
     }
 
-    final data = Map<String, dynamic>.from(snapshot.data()!);
+    final data = Map<String, dynamic>.from(rawData);
     data['uid'] = data['uid'] ?? snapshot.id;
     return UserModel.fromMap(data);
   }

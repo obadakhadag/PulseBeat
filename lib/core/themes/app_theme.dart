@@ -7,27 +7,40 @@ class AppTheme {
   static const Color _white = Color(0xFFFFFFFF);
   static const Color _lightBackground = Color(0xFFFFFFFF);
   static const Color _lightCard = Color(0xFFF5F5F5);
-  static const Color _lightText = Color(0xFF111111);
+  static const Color _lightText = Color(0xFF000000);
   static const Color _lightTextSecondary = Color(0xFF4A4A4A);
-  static const Color _night = Color(0xFF0D0D0D);
-  static const Color _nightCard = Color(0xFF1A1A1A);
-  static const Color _nightCardSoft = Color(0xFF232323);
-  static const Color _darkTextSecondary = Color(0xFF9A9A9A);
-  static const Color _violet = Color(0xFF9B5CFF);
-  static const Color _orange = Color(0xFFFF8A3D);
-  static const Color _pink = Color(0xFFFF4FA3);
-  static const Color _lavender = Color(0xFFD8C3FF);
+  static const Color _night = Color(0xFF1A1A1A);
+  static const Color _nightCard = Color(0xFF232323);
+  static const Color _nightCardSoft = Color(0xFF2D2D2D);
+  static const Color _darkTextSecondary = Color(0xFFBDBDBD);
+  static const Color _violet = Color(0xFF9F63FF);
+  static const Color _orange = Color(0xFFFF964D);
+  static const Color _pink = Color(0xFFFF5FA8);
+  static const Color _lightViolet = Color(0xFFB489FF);
+  static const Color _lightOrange = Color(0xFFFFB070);
+  static const Color _lightPink = Color(0xFFFF7FBC);
+  static const Color _lavender = Color(0xFFE6D7FF);
   static const Color _shadow = Color(0x4D000000);
 
   static ThemeData get lightTheme {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: _violet,
-      primary: _violet,
-      secondary: _orange,
-      tertiary: _pink,
-      surface: _lightCard,
-      brightness: Brightness.light,
-    );
+    final ColorScheme scheme =
+        ColorScheme.fromSeed(
+          seedColor: _lightViolet,
+          brightness: Brightness.light,
+        ).copyWith(
+          primary: _lightViolet,
+          secondary: _lightOrange,
+          tertiary: _lightPink,
+          surface: _lightCard,
+          onSurface: _lightText,
+          onPrimary: _white,
+          onSecondary: _white,
+          onTertiary: _white,
+          outline: _lightTextSecondary.withValues(alpha: 0.20),
+          surfaceContainerHighest: _lightCard,
+          shadow: _shadow,
+          scrim: const Color(0xFF111111),
+        );
 
     return ThemeData(
       useMaterial3: true,
@@ -57,8 +70,8 @@ class AppTheme {
       chipTheme: ChipThemeData(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         backgroundColor: _lightCard,
-        selectedColor: _orange,
-        secondarySelectedColor: _orange,
+        selectedColor: _lightOrange,
+        secondarySelectedColor: _lightOrange,
         labelStyle: GoogleFonts.sora(
           fontWeight: FontWeight.w600,
           color: _lightTextSecondary,
@@ -71,7 +84,7 @@ class AppTheme {
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: _lightCard.withValues(alpha: 0.92),
-        selectedItemColor: _orange,
+        selectedItemColor: _lightOrange,
         unselectedItemColor: _lightText.withValues(alpha: 0.60),
         elevation: 0,
       ),
@@ -91,7 +104,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(color: _orange.withValues(alpha: 0.45)),
+          borderSide: BorderSide(color: _lightOrange.withValues(alpha: 0.55)),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
@@ -104,17 +117,19 @@ class AppTheme {
         tileColor: _lightCard.withValues(alpha: 0.94),
       ),
       sliderTheme: SliderThemeData(
-        trackHeight: 4,
-        activeTrackColor: _orange,
+        trackHeight: 5,
+        activeTrackColor: _lightOrange,
         inactiveTrackColor: _lightText.withValues(alpha: 0.12),
-        thumbColor: _orange,
-        overlayColor: _orange.withValues(alpha: 0.12),
+        thumbColor: _lightOrange,
+        overlayColor: _lightOrange.withValues(alpha: 0.12),
       ),
       tabBarTheme: TabBarThemeData(
         dividerColor: Colors.transparent,
         indicator: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
-          gradient: const LinearGradient(colors: <Color>[_orange, _pink]),
+          gradient: const LinearGradient(
+            colors: <Color>[_lightViolet, _lightPink, _lightOrange],
+          ),
         ),
         labelColor: _white,
         unselectedLabelColor: _lightTextSecondary,
@@ -133,11 +148,45 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: _orange,
+          backgroundColor: _lightOrange,
           foregroundColor: _white,
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: _lightText,
+          backgroundColor: _lightText.withValues(alpha: 0.05),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return _lightOrange;
+            }
+            return _lightCard;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(WidgetState.selected)) {
+              return _white;
+            }
+            return _lightTextSecondary;
+          }),
+          side: WidgetStatePropertyAll(
+            BorderSide(color: _lightText.withValues(alpha: 0.08)),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          ),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           ),
         ),
       ),
@@ -157,8 +206,8 @@ class AppTheme {
       ),
       extensions: const <ThemeExtension<dynamic>>[
         AppSurfaces(
-          primaryGlow: _violet,
-          secondaryGlow: _orange,
+          primaryGlow: _lightViolet,
+          secondaryGlow: _lightOrange,
           accentSoft: _lavender,
         ),
       ],
@@ -166,14 +215,24 @@ class AppTheme {
   }
 
   static ThemeData get darkTheme {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: _violet,
-      primary: _violet,
-      secondary: _orange,
-      tertiary: _pink,
-      surface: _night,
-      brightness: Brightness.dark,
-    );
+    final ColorScheme scheme =
+        ColorScheme.fromSeed(
+          seedColor: _violet,
+          brightness: Brightness.dark,
+        ).copyWith(
+          primary: _violet,
+          secondary: _orange,
+          tertiary: _pink,
+          surface: _nightCard,
+          onSurface: _white,
+          onPrimary: _white,
+          onSecondary: _white,
+          onTertiary: _white,
+          outline: _white.withValues(alpha: 0.12),
+          surfaceContainerHighest: _nightCardSoft,
+          shadow: _shadow,
+          scrim: Colors.black,
+        );
 
     return ThemeData(
       useMaterial3: true,
@@ -193,7 +252,7 @@ class AppTheme {
         centerTitle: true,
       ),
       cardTheme: CardThemeData(
-        color: _nightCard.withValues(alpha: 0.92),
+        color: _nightCard.withValues(alpha: 0.96),
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -218,7 +277,7 @@ class AppTheme {
       progressIndicatorTheme: const ProgressIndicatorThemeData(color: _orange),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: _white.withValues(alpha: 0.06),
+        fillColor: _nightCardSoft.withValues(alpha: 0.96),
         hintStyle: const TextStyle(color: _darkTextSecondary),
         prefixIconColor: _darkTextSecondary,
         suffixIconColor: _darkTextSecondary,
@@ -228,11 +287,11 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(color: _white.withValues(alpha: 0.06)),
+          borderSide: BorderSide(color: _white.withValues(alpha: 0.05)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
-          borderSide: BorderSide(color: _orange.withValues(alpha: 0.55)),
+          borderSide: BorderSide(color: _orange.withValues(alpha: 0.65)),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 18,
@@ -245,7 +304,7 @@ class AppTheme {
         tileColor: _nightCardSoft.withValues(alpha: 0.95),
       ),
       sliderTheme: SliderThemeData(
-        trackHeight: 4,
+        trackHeight: 5,
         activeTrackColor: _orange,
         inactiveTrackColor: _white.withValues(alpha: 0.12),
         thumbColor: _orange,
@@ -269,7 +328,9 @@ class AppTheme {
         dividerColor: Colors.transparent,
         indicator: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
-          gradient: const LinearGradient(colors: <Color>[_orange, _pink]),
+          gradient: const LinearGradient(
+            colors: <Color>[_violet, _pink, _orange],
+          ),
         ),
         labelColor: _white,
         unselectedLabelColor: _darkTextSecondary,
@@ -284,7 +345,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
-          backgroundColor: _white.withValues(alpha: 0.04),
+          backgroundColor: _nightCardSoft.withValues(alpha: 0.92),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -300,7 +361,7 @@ class AppTheme {
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: _white,
-          backgroundColor: _white.withValues(alpha: 0.06),
+          backgroundColor: _white.withValues(alpha: 0.08),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
           ),
@@ -312,7 +373,7 @@ class AppTheme {
             if (states.contains(WidgetState.selected)) {
               return _orange;
             }
-            return _white.withValues(alpha: 0.04);
+            return _nightCardSoft.withValues(alpha: 0.94);
           }),
           foregroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
             if (states.contains(WidgetState.selected)) {

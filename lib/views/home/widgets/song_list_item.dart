@@ -37,27 +37,16 @@ class SongListItem extends StatelessWidget {
               children: <Widget>[
                 SongArtwork(
                   songId: song.artworkId,
+                  artworkUri: song.artworkUri,
                   width: 66,
                   height: 66,
                   borderRadius: BorderRadius.circular(20),
                   size: 128,
                   quality: 40,
-                  fallback: Container(
+                  fallback: SongArtworkPlaceholder(
                     width: 66,
                     height: 66,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: <Color>[
-                          context.colors.primary.withValues(alpha: 0.95),
-                          context.colors.secondary.withValues(alpha: 0.95),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(
-                      Icons.music_note_rounded,
-                      color: Colors.white,
-                    ),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                 ),
                 const SizedBox(width: 14),

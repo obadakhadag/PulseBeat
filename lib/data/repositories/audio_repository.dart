@@ -16,8 +16,9 @@ class AudioRepository {
     bool forceRefresh = false,
     bool includeDeviceSongs = true,
   }) async {
-    if (!forceRefresh && _cachedSongs != null) {
-      return List<SongModel>.unmodifiable(_cachedSongs!);
+    final List<SongModel>? cachedSongs = _cachedSongs;
+    if (!forceRefresh && cachedSongs != null) {
+      return List<SongModel>.unmodifiable(cachedSongs);
     }
 
     final List<SongModel> deviceSongs = includeDeviceSongs
@@ -38,8 +39,9 @@ class AudioRepository {
       merged.add(song);
     }
 
-    _cachedSongs = List<SongModel>.unmodifiable(merged);
-    return List<SongModel>.unmodifiable(_cachedSongs!);
+    final List<SongModel> loadedSongs = List<SongModel>.unmodifiable(merged);
+    _cachedSongs = loadedSongs;
+    return List<SongModel>.unmodifiable(loadedSongs);
   }
 
   Future<List<SongModel>> _loadDeviceQuerySongs() async {

@@ -63,14 +63,15 @@ class SortBottomSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  'Library options',
+                  'Library options'.tr,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Tune the way songs are sorted and grouped without changing your library.',
+                  'Tune the way songs are sorted and grouped without changing your library.'
+                      .tr,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(
                       context,
@@ -79,7 +80,7 @@ class SortBottomSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Sort',
+                  'Sort'.tr,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -90,7 +91,12 @@ class SortBottomSheet extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Obx(
                       () => option(
-                        title: value.name.capitalizeFirst ?? value.name,
+                        title: switch (value) {
+                          LibrarySort.newest => 'Newest'.tr,
+                          LibrarySort.title => 'Title'.tr,
+                          LibrarySort.artist => 'Artist'.tr,
+                          LibrarySort.duration => 'Duration'.tr,
+                        },
                         selected: controller.sort.value == value,
                         onTap: () => controller.setSort(value),
                       ),
@@ -99,7 +105,7 @@ class SortBottomSheet extends StatelessWidget {
                 }),
                 const SizedBox(height: 10),
                 Text(
-                  'Group',
+                  'Group'.tr,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -111,17 +117,18 @@ class SortBottomSheet extends StatelessWidget {
                     child: Obx(
                       () => option(
                         title: switch (value) {
-                          LibraryGroup.folder => 'Folder',
-                          LibraryGroup.titleLanguage => 'Title language',
-                          LibraryGroup.artist => 'Artist',
+                          LibraryGroup.folder => 'Folder'.tr,
+                          LibraryGroup.titleLanguage => 'Language'.tr,
+                          LibraryGroup.artist => 'Artist'.tr,
                         },
                         subtitle: switch (value) {
                           LibraryGroup.folder =>
-                            'Show songs under device folders.',
+                            'Show songs under device folders.'.tr,
                           LibraryGroup.titleLanguage =>
-                            'Split songs into Arabic, English, and other titles.',
+                            'Split songs into Arabic, English, and other metadata patterns.'
+                                .tr,
                           LibraryGroup.artist =>
-                            'Show songs under artist names.',
+                            'Show songs under artist names.'.tr,
                         },
                         selected: controller.group.value == value,
                         onTap: () {

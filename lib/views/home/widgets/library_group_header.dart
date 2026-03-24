@@ -15,6 +15,7 @@ class LibraryGroupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final String subtitleText = subtitle ?? '';
 
     return Card(
       child: Padding(
@@ -33,10 +34,10 @@ class LibraryGroupHeader extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  if (subtitle != null) ...<Widget>[
+                  if (subtitleText.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 6),
                     Text(
-                      subtitle!,
+                      subtitleText,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(

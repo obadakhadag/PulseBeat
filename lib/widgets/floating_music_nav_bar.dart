@@ -20,19 +20,19 @@ class FloatingMusicNavBar extends StatelessWidget {
     final List<_NavItem> items = const <_NavItem>[
       _NavItem(route: AppPages.home, icon: Icons.home_rounded, label: 'Home'),
       _NavItem(
-        route: AppPages.search,
-        icon: Icons.search_rounded,
-        label: 'Search',
+        route: AppPages.favoriteSongs,
+        icon: Icons.favorite_rounded,
+        label: 'Favorites',
+      ),
+      _NavItem(
+        route: AppPages.collection,
+        icon: Icons.library_music_rounded,
+        label: 'Collection',
       ),
       _NavItem(
         route: AppPages.chatList,
         icon: Icons.chat_bubble_outline,
         label: 'Chat',
-      ),
-      _NavItem(
-        route: AppPages.followRequests,
-        icon: Icons.person_add_alt,
-        label: 'Requests',
       ),
     ];
 
@@ -102,7 +102,7 @@ class FloatingMusicNavBar extends StatelessWidget {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                item.label,
+                                item.label.tr,
                                 style: theme.textTheme.labelSmall?.copyWith(
                                   color: isSelected
                                       ? colors.onPrimary

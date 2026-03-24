@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -77,6 +78,9 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController _messageListController = ScrollController();
   final Map<int, SongModel?> _songLookupCache = <int, SongModel?>{};
   final Map<String, String> _sharedAudioFileCache = <String, String>{};
+  final Set<String> _savingSongMessageIds = <String>{};
+  final Set<String> _savedSongMessageIds = <String>{};
+  final Map<String, String> _songSaveErrors = <String, String>{};
   bool _isSending = false;
   bool _isComposerFocused = false;
   bool _isTyping = false;
@@ -328,14 +332,32 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _saveReceivedSong({
+    required String messageId,
     required String cacheKey,
     required int songId,
     required String songTitle,
     required String songArtist,
     required String songName,
+    required String coverUrl,
     required String audioUrl,
     required String audioData,
   }) async {
+    final String normalizedMessageId = messageId.trim();
+    final String normalizedCoverUrl = coverUrl.trim();
+    if (normalizedMessageId.isNotEmpty &&
+        (_savingSongMessageIds.contains(normalizedMessageId) ||
+            _savedSongMessageIds.contains(normalizedMessageId))) {
+      return;
+    }
+
+    if (mounted && normalizedMessageId.isNotEmpty) {
+      setState(() {
+        _savingSongMessageIds.add(normalizedMessageId);
+        _savedSongMessageIds.remove(normalizedMessageId);
+        _songSaveErrors.remove(normalizedMessageId);
+      });
+    }
+
     final String sourceKey = _buildSharedSongSourceKey(
       songId: songId,
       songTitle: songTitle,
@@ -349,10 +371,24 @@ class _ChatPageState extends State<ChatPage> {
     if (existingSong != null && existingSong.filePath.trim().isNotEmpty) {
       final File existingFile = File(existingSong.filePath);
       if (await existingFile.exists()) {
+        if (normalizedCoverUrl.isNotEmpty &&
+            (existingSong.artworkUri?.trim().isEmpty ?? true)) {
+          _storageService.saveDownloadedSong(
+            sourceKey: sourceKey,
+            song: existingSong.copyWith(artworkUri: normalizedCoverUrl),
+          );
+        }
         _sharedAudioFileCache[cacheKey] = existingSong.filePath;
         _sharedAudioFileCache[sourceKey] = existingSong.filePath;
         await _homeController.loadLibrary(forceRefresh: true);
-        Get.snackbar('Saved', 'Song saved to your library');
+        if (mounted && normalizedMessageId.isNotEmpty) {
+          setState(() {
+            _savingSongMessageIds.remove(normalizedMessageId);
+            _savedSongMessageIds.add(normalizedMessageId);
+            _songSaveErrors.remove(normalizedMessageId);
+          });
+        }
+        Get.snackbar('Done'.tr, 'Song saved to your library'.tr);
         return;
       }
     }
@@ -429,6 +465,7 @@ class _ChatPageState extends State<ChatPage> {
         filePath: outputPath,
         uri: Uri.file(outputPath).toString(),
         artworkId: 0,
+        artworkUri: normalizedCoverUrl.isEmpty ? null : normalizedCoverUrl,
       );
 
       _storageService.saveDownloadedSong(sourceKey: sourceKey, song: savedSong);
@@ -436,11 +473,32 @@ class _ChatPageState extends State<ChatPage> {
       _sharedAudioFileCache[sourceKey] = outputPath;
 
       await _homeController.loadLibrary(forceRefresh: true);
-      Get.snackbar('Saved', 'Song saved to your library');
+      if (mounted && normalizedMessageId.isNotEmpty) {
+        setState(() {
+          _savingSongMessageIds.remove(normalizedMessageId);
+          _savedSongMessageIds.add(normalizedMessageId);
+          _songSaveErrors.remove(normalizedMessageId);
+        });
+      }
+      Get.snackbar('Done'.tr, 'Song saved to your library'.tr);
     } on StateError catch (error) {
+      if (mounted && normalizedMessageId.isNotEmpty) {
+        setState(() {
+          _savingSongMessageIds.remove(normalizedMessageId);
+          _savedSongMessageIds.remove(normalizedMessageId);
+          _songSaveErrors[normalizedMessageId] = error.message.toString();
+        });
+      }
       Get.snackbar('Error', error.message.toString());
     } catch (_) {
-      Get.snackbar('Error', 'Failed to save song.');
+      if (mounted && normalizedMessageId.isNotEmpty) {
+        setState(() {
+          _savingSongMessageIds.remove(normalizedMessageId);
+          _savedSongMessageIds.remove(normalizedMessageId);
+          _songSaveErrors[normalizedMessageId] = 'Failed to save song.'.tr;
+        });
+      }
+      Get.snackbar('Error'.tr, 'Failed to save song.'.tr);
     }
   }
 
@@ -482,7 +540,7 @@ class _ChatPageState extends State<ChatPage> {
         isTyping: false,
       );
     } catch (_) {
-      Get.snackbar('Error', 'Failed to send message.');
+      Get.snackbar('Error'.tr, 'Failed to send message.'.tr);
     } finally {
       if (mounted) {
         setState(() {
@@ -520,15 +578,17 @@ class _ChatPageState extends State<ChatPage> {
 
       if (songUrl != null) {
         print('Song uploaded successfully');
+        final String coverUrl = await _resolveSongCoverUrl(song);
         await _sendSongMessageToFirestore(
           chatId: chatId,
           currentUserUid: currentUserUid,
           song: song,
           songUrl: songUrl,
+          coverUrl: coverUrl,
         );
       } else {
         print('Song upload failed');
-        Get.snackbar('Error', 'Failed to upload song');
+        Get.snackbar('Error'.tr, 'Failed to send song.'.tr);
         return;
       }
 
@@ -542,7 +602,7 @@ class _ChatPageState extends State<ChatPage> {
       print('SONG SEND ERROR:');
       print(error.toString());
       print(stackTrace.toString());
-      Get.snackbar('Error', 'Failed to send song.');
+      Get.snackbar('Error'.tr, 'Failed to send song.'.tr);
     } finally {
       if (mounted) {
         setState(() {
@@ -557,6 +617,7 @@ class _ChatPageState extends State<ChatPage> {
     required String currentUserUid,
     required SongModel song,
     required String songUrl,
+    required String coverUrl,
   }) async {
     print('STEP 11: Preparing Firestore song message');
 
@@ -575,7 +636,7 @@ class _ChatPageState extends State<ChatPage> {
       'title': song.title,
       'artist': song.artist,
       'songName': songName,
-      'coverUrl': '',
+      'coverUrl': coverUrl.trim(),
       'songUrl': songUrl,
       'audioUrl': songUrl,
       'audioData': '',
@@ -593,6 +654,37 @@ class _ChatPageState extends State<ChatPage> {
     print('STEP 15: Chat last message updated');
   }
 
+  Future<String> _resolveSongCoverUrl(SongModel song) async {
+    final String existingArtworkUri = song.artworkUri?.trim() ?? '';
+    if (existingArtworkUri.isNotEmpty) {
+      return existingArtworkUri;
+    }
+    if (song.artworkId <= 0) {
+      return '';
+    }
+
+    try {
+      final Uint8List? artworkData = await _audioQuery.queryArtwork(
+        song.artworkId,
+        audio_query.ArtworkType.AUDIO,
+        format: audio_query.ArtworkFormat.JPEG,
+        size: 700,
+        quality: 85,
+      );
+      if (artworkData == null || artworkData.isEmpty) {
+        return '';
+      }
+
+      return await SupabaseDebugService.uploadArtworkDebug(
+            artworkData,
+            fileExtension: 'jpg',
+          ) ??
+          '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   Future<void> _openSongSelector({
     required String chatId,
     required String currentUserUid,
@@ -605,9 +697,9 @@ class _ChatPageState extends State<ChatPage> {
       isScrollControlled: true,
       builder: (context) {
         if (songs.isEmpty) {
-          return const SizedBox(
+          return SizedBox(
             height: 220,
-            child: Center(child: Text('No songs available.')),
+            child: Center(child: Text('No songs available.'.tr)),
           );
         }
 
@@ -639,25 +731,14 @@ class _ChatPageState extends State<ChatPage> {
                 ),
                 leading: SongArtwork(
                   songId: song.artworkId,
+                  artworkUri: song.artworkUri,
                   width: 50,
                   height: 50,
                   borderRadius: BorderRadius.circular(14),
-                  fallback: Container(
+                  fallback: SongArtworkPlaceholder(
                     width: 50,
                     height: 50,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: <Color>[
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context).colorScheme.secondary,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      Icons.music_note_rounded,
-                      color: Theme.of(context).colorScheme.onPrimary,
-                    ),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                 ),
                 title: Text(
@@ -889,6 +970,7 @@ class _ChatPageState extends State<ChatPage> {
     required String songArtist,
     required String songName,
     required String localPath,
+    String coverUrl = '',
   }) {
     final int resolvedId = songId > 0 ? songId : localPath.hashCode.abs();
     final String resolvedTitle = songTitle.trim().isNotEmpty
@@ -906,6 +988,7 @@ class _ChatPageState extends State<ChatPage> {
       filePath: localPath,
       uri: Uri.file(localPath).toString(),
       artworkId: songId > 0 ? songId : 0,
+      artworkUri: coverUrl.trim().isEmpty ? null : coverUrl.trim(),
     );
   }
 
@@ -915,6 +998,7 @@ class _ChatPageState extends State<ChatPage> {
     required String songArtist,
     required String songName,
     required String audioUrl,
+    String coverUrl = '',
   }) {
     final String trimmedUrl = audioUrl.trim();
     if (trimmedUrl.isEmpty) {
@@ -933,6 +1017,7 @@ class _ChatPageState extends State<ChatPage> {
       filePath: '',
       uri: trimmedUrl,
       artworkId: songId > 0 ? songId : 0,
+      artworkUri: coverUrl.trim().isEmpty ? null : coverUrl.trim(),
     );
   }
 
@@ -942,6 +1027,7 @@ class _ChatPageState extends State<ChatPage> {
     required String songTitle,
     required String songArtist,
     required String songName,
+    required String coverUrl,
     required String audioUrl,
     required String audioData,
   }) async {
@@ -951,6 +1037,7 @@ class _ChatPageState extends State<ChatPage> {
       songTitle: songTitle,
       songArtist: songArtist,
       songName: songName,
+      coverUrl: coverUrl,
       audioUrl: audioUrl,
       audioData: audioData,
       toggleIfCurrent: true,
@@ -963,6 +1050,7 @@ class _ChatPageState extends State<ChatPage> {
     required String songTitle,
     required String songArtist,
     required String songName,
+    required String coverUrl,
     required String audioUrl,
     required String audioData,
     required bool toggleIfCurrent,
@@ -986,6 +1074,7 @@ class _ChatPageState extends State<ChatPage> {
             songArtist: songArtist,
             songName: songName,
             localPath: decodedPath,
+            coverUrl: coverUrl,
           );
         }
       } on StateError catch (error) {
@@ -1008,6 +1097,7 @@ class _ChatPageState extends State<ChatPage> {
             songArtist: songArtist,
             songName: songName,
             localPath: downloadedPath,
+            coverUrl: coverUrl,
           );
         }
       } on StateError catch (error) {
@@ -1026,6 +1116,7 @@ class _ChatPageState extends State<ChatPage> {
           songTitle: songTitle,
           songArtist: songArtist,
           songName: songName,
+          coverUrl: coverUrl,
           audioUrl: audioUrl,
         );
     if (song == null) {
@@ -1137,6 +1228,7 @@ class _ChatPageState extends State<ChatPage> {
     required String songTitle,
     required String songArtist,
     required String songName,
+    required String coverUrl,
     required String audioUrl,
     required String audioData,
   }) async {
@@ -1156,6 +1248,7 @@ class _ChatPageState extends State<ChatPage> {
         songTitle: songTitle,
         songArtist: songArtist,
         songName: songName,
+        coverUrl: coverUrl,
         audioUrl: audioUrl,
         audioData: audioData,
         toggleIfCurrent: false,
@@ -1435,58 +1528,32 @@ class _ChatPageState extends State<ChatPage> {
     required int songId,
     required bool isMine,
   }) {
-    final Widget fallback = Container(
+    final Widget fallback = SongArtworkPlaceholder(
       width: 52,
       height: 52,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: <Color>[
-            isMine
-                ? Theme.of(
-                    context,
-                  ).colorScheme.onPrimary.withValues(alpha: 0.34)
-                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.92),
-            isMine
-                ? Theme.of(
-                    context,
-                  ).colorScheme.onPrimary.withValues(alpha: 0.16)
-                : Theme.of(
-                    context,
-                  ).colorScheme.secondary.withValues(alpha: 0.88),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Icon(
-        Icons.music_note,
-        color: isMine ? Theme.of(context).colorScheme.onPrimary : null,
-      ),
+      borderRadius: BorderRadius.circular(14),
+      icon: Icons.music_note_rounded,
+      gradientColors: <Color>[
+        isMine
+            ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.34)
+            : Theme.of(context).colorScheme.primary.withValues(alpha: 0.92),
+        isMine
+            ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.16)
+            : Theme.of(context).colorScheme.secondary.withValues(alpha: 0.88),
+      ],
+      iconColor: isMine
+          ? Theme.of(context).colorScheme.onPrimary
+          : Colors.white,
     );
 
-    if (coverUrl.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Image.network(
-          coverUrl,
-          width: 52,
-          height: 52,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => fallback,
-        ),
-      );
-    }
-
-    if (songId > 0) {
-      return SongArtwork(
-        songId: songId,
-        width: 52,
-        height: 52,
-        borderRadius: BorderRadius.circular(14),
-        fallback: fallback,
-      );
-    }
-
-    return ClipRRect(borderRadius: BorderRadius.circular(14), child: fallback);
+    return SongArtwork(
+      songId: songId,
+      artworkUri: coverUrl,
+      width: 52,
+      height: 52,
+      borderRadius: BorderRadius.circular(14),
+      fallback: fallback,
+    );
   }
 
   String _formatDuration(Duration value) {
@@ -1509,6 +1576,7 @@ class _ChatPageState extends State<ChatPage> {
     required String songTitle,
     required String songArtist,
     required String songName,
+    required String coverUrl,
     required String audioUrl,
     required String audioData,
     required Duration fallbackDuration,
@@ -1539,6 +1607,7 @@ class _ChatPageState extends State<ChatPage> {
           songTitle: songTitle,
           songArtist: songArtist,
           songName: songName,
+          coverUrl: coverUrl,
           audioUrl: audioUrl,
           audioData: audioData,
           isPlayingThisSong: isPlayingThisSong,
@@ -1578,6 +1647,7 @@ class _ChatPageState extends State<ChatPage> {
                 songTitle: songTitle,
                 songArtist: songArtist,
                 songName: songName,
+                coverUrl: coverUrl,
                 audioUrl: audioUrl,
                 audioData: audioData,
                 isPlayingThisSong: isPlayingThisSong,
@@ -1601,6 +1671,7 @@ class _ChatPageState extends State<ChatPage> {
     required String songTitle,
     required String songArtist,
     required String songName,
+    required String coverUrl,
     required String audioUrl,
     required String audioData,
     required bool isPlayingThisSong,
@@ -1641,6 +1712,7 @@ class _ChatPageState extends State<ChatPage> {
                       songTitle: songTitle,
                       songArtist: songArtist,
                       songName: songName,
+                      coverUrl: coverUrl,
                       audioUrl: audioUrl,
                       audioData: audioData,
                     ),
@@ -1714,6 +1786,11 @@ class _ChatPageState extends State<ChatPage> {
   }) {
     final Duration fallbackDuration =
         _homeController.findSongById(songId)?.duration ?? Duration.zero;
+    final bool canUseSong =
+        songId > 0 || audioUrl.trim().isNotEmpty || audioData.trim().isNotEmpty;
+    final bool isSavePending = _savingSongMessageIds.contains(messageId);
+    final bool isSaveCompleted = _savedSongMessageIds.contains(messageId);
+    final String? saveError = _songSaveErrors[messageId];
 
     return Column(
       crossAxisAlignment: isMine
@@ -1768,6 +1845,7 @@ class _ChatPageState extends State<ChatPage> {
           songTitle: songTitle,
           songArtist: songArtist,
           songName: songName,
+          coverUrl: coverUrl,
           audioUrl: audioUrl,
           audioData: audioData,
           fallbackDuration: fallbackDuration,
@@ -1780,17 +1858,16 @@ class _ChatPageState extends State<ChatPage> {
           children: <Widget>[
             if (!isMine)
               OutlinedButton.icon(
-                onPressed:
-                    songId <= 0 &&
-                        audioUrl.trim().isEmpty &&
-                        audioData.trim().isEmpty
+                onPressed: !canUseSong || isSavePending || isSaveCompleted
                     ? null
                     : () => _saveReceivedSong(
+                        messageId: messageId,
                         cacheKey: messageId,
                         songId: songId,
                         songTitle: songTitle,
                         songArtist: songArtist,
                         songName: songName,
+                        coverUrl: coverUrl,
                         audioUrl: audioUrl,
                         audioData: audioData,
                       ),
@@ -1806,14 +1883,27 @@ class _ChatPageState extends State<ChatPage> {
                         : Theme.of(context).dividerColor,
                   ),
                 ),
-                icon: const Icon(Icons.download_rounded),
-                label: const Text('Save'),
+                icon: isSavePending
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        isSaveCompleted
+                            ? Icons.check_circle_rounded
+                            : Icons.download_rounded,
+                      ),
+                label: Text(
+                  isSavePending
+                      ? 'Saving...'.tr
+                      : isSaveCompleted
+                      ? 'Saved'.tr
+                      : 'Save'.tr,
+                ),
               ),
             OutlinedButton.icon(
-              onPressed:
-                  songId <= 0 &&
-                      audioUrl.trim().isEmpty &&
-                      audioData.trim().isEmpty
+              onPressed: !canUseSong
                   ? null
                   : () => _startListeningSession(
                       chatId: chatId,
@@ -1843,6 +1933,28 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ],
         ),
+        if (!isMine && isSaveCompleted) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            'Song saved to your library'.tr,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: messageTextColor.withValues(alpha: 0.84),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        if (!isMine && saveError != null && saveError.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 8),
+          Text(
+            saveError,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Colors.red.shade200,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1876,6 +1988,7 @@ class _ChatPageState extends State<ChatPage> {
         final String title = (data['title'] as String?)?.trim() ?? '';
         final String artist = (data['artist'] as String?)?.trim() ?? '';
         final String songName = (data['songName'] as String?)?.trim() ?? '';
+        final String coverUrl = (data['coverUrl'] as String?)?.trim() ?? '';
         final String songUrl = (data['songUrl'] as String?)?.trim() ?? '';
         final String audioUrl = songUrl.isNotEmpty
             ? songUrl
@@ -1940,6 +2053,7 @@ class _ChatPageState extends State<ChatPage> {
                           songTitle: title,
                           songArtist: artist,
                           songName: songName.isNotEmpty ? songName : title,
+                          coverUrl: coverUrl,
                           audioUrl: audioUrl,
                           audioData: audioData,
                         ),
@@ -2043,7 +2157,7 @@ class _ChatPageState extends State<ChatPage> {
                             snapshot.data?.docs ??
                             <QueryDocumentSnapshot<Map<String, dynamic>>>[];
                         if (docs.isEmpty) {
-                          return const Center(child: Text('No messages yet'));
+                          return Center(child: Text('No messages yet'.tr));
                         }
 
                         return ListView.builder(
@@ -2293,7 +2407,7 @@ class _ChatPageState extends State<ChatPage> {
                                                     children: <Widget>[
                                                       if (isEdited)
                                                         Text(
-                                                          'Edited',
+                                                          'Edited'.tr,
                                                           style: theme
                                                               .textTheme
                                                               .labelSmall
@@ -2382,7 +2496,7 @@ class _ChatPageState extends State<ChatPage> {
                                                         });
                                                       }
                                                     },
-                                                    child: const Text('Edit'),
+                                                    child: Text('Edit'.tr),
                                                   ),
                                                 if (isMine)
                                                   TextButton(
@@ -2398,7 +2512,7 @@ class _ChatPageState extends State<ChatPage> {
                                                         });
                                                       }
                                                     },
-                                                    child: const Text('Delete'),
+                                                    child: Text('Delete'.tr),
                                                   ),
                                                 Builder(
                                                   builder: (buttonContext) {
@@ -2420,9 +2534,7 @@ class _ChatPageState extends State<ChatPage> {
                                                           });
                                                         }
                                                       },
-                                                      child: const Text(
-                                                        'React',
-                                                      ),
+                                                      child: Text('React'.tr),
                                                     );
                                                   },
                                                 ),
@@ -2515,8 +2627,8 @@ class _ChatPageState extends State<ChatPage> {
                                       currentUserUid: currentUserUid,
                                       value: value,
                                     ),
-                                decoration: const InputDecoration(
-                                  hintText: 'Type a message...',
+                                decoration: InputDecoration(
+                                  hintText: 'Type a message...'.tr,
                                   border: InputBorder.none,
                                   enabledBorder: InputBorder.none,
                                   focusedBorder: InputBorder.none,

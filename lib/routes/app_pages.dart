@@ -4,6 +4,7 @@ import '../pages/chat_list_page.dart';
 import '../core/bindings/app_bindings.dart';
 import '../pages/chat_page.dart';
 import '../pages/collection_page.dart';
+import '../pages/favorite_songs_page.dart';
 import '../pages/follow_requests_page.dart';
 import '../pages/profile_page.dart';
 import '../pages/search_page.dart';
@@ -31,6 +32,7 @@ class AppPages {
   static const String followRequests = '/followRequests';
   static const String collection = '/collection';
   static const String search = '/search';
+  static const String favoriteSongs = '/favoriteSongs';
 
   static final List<GetPage<dynamic>> pages = <GetPage<dynamic>>[
     GetPage<dynamic>(
@@ -101,6 +103,13 @@ class AppPages {
       name: search,
       page: () => const SearchPage(),
       transition: Transition.fadeIn,
+      transitionDuration: _pageTransitionDuration,
+    ),
+    GetPage<dynamic>(
+      name: favoriteSongs,
+      page: () => const FavoriteSongsPage(),
+      binding: HomeBinding(),
+      transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),
   ];

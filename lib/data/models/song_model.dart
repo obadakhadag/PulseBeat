@@ -10,6 +10,7 @@ class SongModel {
     required this.filePath,
     required this.uri,
     required this.artworkId,
+    this.artworkUri,
   });
 
   final int id;
@@ -20,6 +21,7 @@ class SongModel {
   final String filePath;
   final String uri;
   final int artworkId;
+  final String? artworkUri;
 
   factory SongModel.fromAudioQuery(audio_query.SongModel song) {
     return SongModel(
@@ -31,6 +33,7 @@ class SongModel {
       filePath: song.data,
       uri: song.uri ?? '',
       artworkId: song.id,
+      artworkUri: null,
     );
   }
 
@@ -46,6 +49,7 @@ class SongModel {
       filePath: (data['filePath'] as String?) ?? '',
       uri: (data['uri'] as String?) ?? '',
       artworkId: (data['artworkId'] as num?)?.toInt() ?? 0,
+      artworkUri: (data['artworkUri'] as String?)?.trim(),
     );
   }
 
@@ -58,6 +62,7 @@ class SongModel {
     String? filePath,
     String? uri,
     int? artworkId,
+    String? artworkUri,
   }) {
     return SongModel(
       id: id ?? this.id,
@@ -68,6 +73,7 @@ class SongModel {
       filePath: filePath ?? this.filePath,
       uri: uri ?? this.uri,
       artworkId: artworkId ?? this.artworkId,
+      artworkUri: artworkUri ?? this.artworkUri,
     );
   }
 
@@ -81,6 +87,7 @@ class SongModel {
       'filePath': filePath,
       'uri': uri,
       'artworkId': artworkId,
+      'artworkUri': artworkUri,
     };
   }
 
@@ -104,9 +111,13 @@ class SongModel {
     return separatorIndex >= 0 ? folder.substring(separatorIndex + 1) : folder;
   }
 
-  bool get hasArabicTitle => RegExp(r'[\u0600-\u06FF]').hasMatch(title);
+  String get _languageSourceText =>
+      <String>[title, artist, album, folderName].join(' ');
 
-  bool get hasEnglishTitle => RegExp(r'[A-Za-z]').hasMatch(title);
+  bool get hasArabicTitle =>
+      RegExp(r'[\u0600-\u06FF]').hasMatch(_languageSourceText);
+
+  bool get hasEnglishTitle => RegExp(r'[A-Za-z]').hasMatch(_languageSourceText);
 
   String get titleLanguageKey {
     if (hasArabicTitle) {

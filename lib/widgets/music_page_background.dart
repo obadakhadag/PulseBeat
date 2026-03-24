@@ -14,6 +14,7 @@ class MusicPageBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final ColorScheme colors = Theme.of(context).colorScheme;
     final Color backgroundColor =
         baseColor ?? Theme.of(context).scaffoldBackgroundColor;
@@ -25,11 +26,12 @@ class MusicPageBackground extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: <Color>[
             backgroundColor,
-            colors.primary.withValues(alpha: 0.08),
-            colors.secondary.withValues(alpha: 0.10),
+            colors.primary.withValues(alpha: isDark ? 0.12 : 0.08),
+            colors.tertiary.withValues(alpha: isDark ? 0.10 : 0.06),
+            colors.secondary.withValues(alpha: isDark ? 0.14 : 0.08),
             backgroundColor,
           ],
-          stops: const <double>[0, 0.22, 0.70, 1],
+          stops: const <double>[0, 0.20, 0.46, 0.78, 1],
         ),
       ),
       child: Stack(
@@ -42,7 +44,9 @@ class MusicPageBackground extends StatelessWidget {
                   top: -90,
                   left: -40,
                   child: _GlowOrb(
-                    color: colors.primary.withValues(alpha: 0.20),
+                    color: colors.primary.withValues(
+                      alpha: isDark ? 0.26 : 0.14,
+                    ),
                     size: 230,
                   ),
                 ),
@@ -50,7 +54,9 @@ class MusicPageBackground extends StatelessWidget {
                   top: 120,
                   right: -70,
                   child: _GlowOrb(
-                    color: colors.secondary.withValues(alpha: 0.16),
+                    color: colors.secondary.withValues(
+                      alpha: isDark ? 0.22 : 0.12,
+                    ),
                     size: 210,
                   ),
                 ),
@@ -58,7 +64,9 @@ class MusicPageBackground extends StatelessWidget {
                   bottom: -80,
                   left: 50,
                   child: _GlowOrb(
-                    color: colors.tertiary.withValues(alpha: 0.12),
+                    color: colors.tertiary.withValues(
+                      alpha: isDark ? 0.18 : 0.10,
+                    ),
                     size: 220,
                   ),
                 ),

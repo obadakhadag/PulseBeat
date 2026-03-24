@@ -40,6 +40,8 @@ class PlayerController extends GetxController {
 
   int? _lastCountedSongId;
   int? _pendingManualPlaySongId;
+  int? _lyricsSongId;
+  int _lyricsRequestToken = 0;
 
   @override
   Future<void> onInit() async {
@@ -51,7 +53,14 @@ class PlayerController extends GetxController {
     await _audioService.init();
 
     ever<SongModel?>(currentSong, (SongModel? song) {
-      if (song != null && showLyrics.value) {
+      if (song == null) {
+        _clearLyricsState();
+        return;
+      }
+      if (_lyricsSongId != song.id) {
+        _clearLyricsState();
+      }
+      if (showLyrics.value) {
         loadLyrics(song);
       }
     });
@@ -142,14 +151,30 @@ class PlayerController extends GetxController {
   }
 
   Future<void> loadLyrics(SongModel song) async {
+    final int requestToken = ++_lyricsRequestToken;
+    _lyricsSongId = song.id;
     isLoadingLyrics.value = true;
     lyrics.value = '';
     final result = await _lyricsRepository.getLyrics(
       artist: song.artist,
       title: song.title,
     );
-    lyrics.value = result ?? 'No lyrics found for this track.';
+    if (requestToken != _lyricsRequestToken ||
+        currentSong.value?.id != song.id) {
+      return;
+    }
+    lyrics.value = result ?? 'No lyrics found for this track.'.tr;
     isLoadingLyrics.value = false;
+  }
+
+  Future<void> ensureLyricsLoaded(SongModel song) async {
+    if (isLoadingLyrics.value && _lyricsSongId == song.id) {
+      return;
+    }
+    if (_lyricsSongId == song.id && lyrics.value.isNotEmpty) {
+      return;
+    }
+    await loadLyrics(song);
   }
 
   void setShowLyrics(bool value) {
@@ -158,17 +183,19 @@ class PlayerController extends GetxController {
     final song = currentSong.value;
     if (value && song != null) {
       loadLyrics(song);
+    } else if (!value) {
+      _clearLyricsState();
     }
   }
 
   String get playbackLabel {
     if (isBuffering.value) {
-      return 'Buffering';
+      return 'Buffering'.tr;
     }
     if (isPlaying.value) {
-      return 'Now Playing';
+      return 'Now Playing'.tr;
     }
-    return 'Paused';
+    return 'Paused'.tr;
   }
 
   @override
@@ -178,7 +205,7 @@ class PlayerController extends GetxController {
   }
 
   void announceMissingQueue() {
-    AppHelpers.showToast('Scan your device library first.');
+    AppHelpers.showToast('Scan your device library first.'.tr);
   }
 
   void _registerPlay(int songId, {bool force = false}) {
@@ -194,5 +221,12 @@ class PlayerController extends GetxController {
   Future<void> _persistShowLyrics(bool value) async {
     await _storageService.ensureInitialized();
     _storageService.setShowLyrics(value);
+  }
+
+  void _clearLyricsState() {
+    _lyricsRequestToken++;
+    _lyricsSongId = null;
+    isLoadingLyrics.value = false;
+    lyrics.value = '';
   }
 }

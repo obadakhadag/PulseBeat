@@ -5,10 +5,11 @@ import '../controllers/home_controller.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/extensions.dart';
 import '../data/models/song_model.dart';
+import '../routes/app_pages.dart';
 import '../views/home/widgets/library_group_header.dart';
 import '../views/home/widgets/song_list_item.dart';
 import '../views/home/widgets/sort_bottom_sheet.dart';
-import '../widgets/music_page_background.dart';
+import '../widgets/main_section_scaffold.dart';
 
 class CollectionPage extends StatefulWidget {
   const CollectionPage({super.key});
@@ -162,11 +163,12 @@ class _CollectionPageState extends State<CollectionPage> {
         sliver: SliverToBoxAdapter(
           child: _buildEmptyCard(
             icon: Icons.library_music_rounded,
-            title: 'Unlock your library',
+            title: 'Unlock your library'.tr,
             message:
-                'Allow audio access so the app can scan and style your music.',
+                'Allow audio access so the app can scan and style your music.'
+                    .tr,
             action: controller.loadLibrary,
-            actionLabel: 'Grant access',
+            actionLabel: 'Grant access'.tr,
           ),
         ),
       );
@@ -188,11 +190,11 @@ class _CollectionPageState extends State<CollectionPage> {
         sliver: SliverToBoxAdapter(
           child: _buildEmptyCard(
             icon: Icons.queue_music_rounded,
-            title: 'No songs found',
+            title: 'No songs found'.tr,
             message:
-                'Pull down to scan again after adding music to the device.',
+                'Pull down to scan again after adding music to the device.'.tr,
             action: controller.loadLibrary,
-            actionLabel: 'Scan again',
+            actionLabel: 'Refresh library'.tr,
           ),
         ),
       );
@@ -243,24 +245,25 @@ class _CollectionPageState extends State<CollectionPage> {
       1 => _buildSongListSliver(
         songs: _playlistSongs,
         emptyIcon: Icons.music_note_rounded,
-        emptyTitle: 'No playlist picks',
+        emptyTitle: 'No playlist picks'.tr,
         emptyMessage:
-            'Play a few tracks and this quick playlist section will fill up.',
+            'Play a few tracks and this quick playlist section will fill up.'
+                .tr,
         bottomPadding: bottomPadding,
       ),
       2 => _buildSongListSliver(
         songs: _likedSongs,
         emptyIcon: Icons.favorite_border_rounded,
-        emptyTitle: 'No liked songs',
+        emptyTitle: 'No liked songs'.tr,
         emptyMessage:
-            'Tap the heart on any track to build your liked collection.',
+            'Tap the heart on any track to build your liked collection.'.tr,
         bottomPadding: bottomPadding,
       ),
       3 => _buildSongListSliver(
         songs: _downloadedSongs,
         emptyIcon: Icons.download_rounded,
-        emptyTitle: 'No downloads found',
-        emptyMessage: 'Save shared tracks from chat to see them here.',
+        emptyTitle: 'No downloads found'.tr,
+        emptyMessage: 'Save shared tracks from chat to see them here.'.tr,
         bottomPadding: bottomPadding,
       ),
       _ => _buildAllSongsSliver(bottomPadding),
@@ -270,8 +273,10 @@ class _CollectionPageState extends State<CollectionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: MusicPageBackground(
-        child: SafeArea(
+      body: MainSectionScaffold(
+        currentRoute: AppPages.collection,
+        body: SafeArea(
+          bottom: false,
           child: RefreshIndicator(
             onRefresh: () async {
               await controller.loadLibrary(forceRefresh: true);
@@ -292,17 +297,12 @@ class _CollectionPageState extends State<CollectionPage> {
                     sliver: SliverToBoxAdapter(
                       child: Row(
                         children: <Widget>[
-                          IconButton(
-                            onPressed: () => Get.back<void>(),
-                            icon: const Icon(Icons.arrow_back_rounded),
-                          ),
-                          const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
                                 Text(
-                                  'My Collection',
+                                  'Collection'.tr,
                                   style: Theme.of(context)
                                       .textTheme
                                       .headlineSmall
@@ -310,7 +310,8 @@ class _CollectionPageState extends State<CollectionPage> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Tracks, favorites, grouping, and sorting live here now.',
+                                  'Tracks, favorites, grouping, and sorting live here now.'
+                                      .tr,
                                   style: Theme.of(context).textTheme.bodyMedium
                                       ?.copyWith(
                                         color: Theme.of(context)
@@ -332,7 +333,7 @@ class _CollectionPageState extends State<CollectionPage> {
                       child: TextField(
                         onChanged: controller.updateSearch,
                         decoration: InputDecoration(
-                          hintText: 'Search songs, artists, albums',
+                          hintText: 'Search songs, artists, albums'.tr,
                           prefixIcon: const Icon(Icons.search_rounded),
                           suffixIcon: IconButton(
                             onPressed: _openSortSheet,
@@ -365,7 +366,7 @@ class _CollectionPageState extends State<CollectionPage> {
                       ),
                     ),
                   ),
-                  _buildLibrarySection(32),
+                  _buildLibrarySection(MainSectionScaffold.bodyBottomInset()),
                 ],
               ),
             ),
@@ -430,14 +431,18 @@ class _CollectionSummaryCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Text(
-                        'Collection',
+                        'Collection'.tr,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Grouped by ${controller.groupLabel} - Sorted by ${controller.sortLabel}',
+                        'Grouped by @group - Sorted by @sort'
+                            .trParams(<String, String>{
+                              'group': controller.groupLabel,
+                              'sort': controller.sortLabel,
+                            }),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(
                             context,
@@ -459,7 +464,11 @@ class _CollectionSummaryCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Text(
-                    '${controller.visibleSongs.length} tracks',
+                    controller.visibleSongs.length == 1
+                        ? '1 track'.tr
+                        : '@count tracks'.trParams(<String, String>{
+                            'count': '${controller.visibleSongs.length}',
+                          }),
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -470,11 +479,11 @@ class _CollectionSummaryCard extends StatelessWidget {
             const SizedBox(height: 18),
             Row(
               children: <Widget>[
-                stat('${controller.songs.length}', 'Tracks'),
+                stat('${controller.songs.length}', 'Tracks'.tr),
                 const SizedBox(width: 10),
-                stat('${controller.favoriteIds.length}', 'Favorites'),
+                stat('${controller.favoriteIds.length}', 'Favorites'.tr),
                 const SizedBox(width: 10),
-                stat('${controller.totalPlayCount}', 'Plays'),
+                stat('${controller.totalPlayCount}', 'Plays'.tr),
               ],
             ),
             const SizedBox(height: 18),
@@ -486,9 +495,9 @@ class _CollectionSummaryCard extends StatelessWidget {
                     .map((LibraryGroup item) {
                       final bool selected = controller.group.value == item;
                       final String label = switch (item) {
-                        LibraryGroup.folder => 'Folder',
-                        LibraryGroup.titleLanguage => 'Language',
-                        LibraryGroup.artist => 'Artist',
+                        LibraryGroup.folder => 'Folder'.tr,
+                        LibraryGroup.titleLanguage => 'Language'.tr,
+                        LibraryGroup.artist => 'Artist'.tr,
                       };
                       return Padding(
                         padding: const EdgeInsets.only(right: 10),
@@ -529,24 +538,25 @@ class _CollectionLibraryTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<(String, int)> tabs = <(String, int)>[
-      ('All', allCount),
-      ('Playlist', playlistCount),
-      ('Liked', likedCount),
-      ('Download', downloadCount),
+      ('All'.tr, allCount),
+      ('Playlist'.tr, playlistCount),
+      ('Liked'.tr, likedCount),
+      ('Download'.tr, downloadCount),
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          'Library Browser',
+          'Library Browser'.tr,
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 6),
         Text(
-          'Jump between your grouped library, quick playlist, liked songs, and downloads.',
+          'Jump between your grouped library, quick playlist, liked songs, and downloads.'
+              .tr,
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: Theme.of(
               context,
