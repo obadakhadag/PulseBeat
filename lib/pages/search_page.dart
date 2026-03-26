@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../controllers/search_controller.dart' as app_search;
 import '../models/user_model.dart';
 import '../routes/app_pages.dart';
+import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 
 class SearchPage extends StatefulWidget {
@@ -99,14 +100,9 @@ class _SearchPageState extends State<SearchPage> {
                               horizontal: 14,
                               vertical: 8,
                             ),
-                            leading: CircleAvatar(
+                            leading: AppUserAvatar(
+                              photoUrl: user.photoUrl,
                               radius: 26,
-                              backgroundImage: user.photoUrl.isNotEmpty
-                                  ? NetworkImage(user.photoUrl)
-                                  : null,
-                              child: user.photoUrl.isEmpty
-                                  ? const Icon(Icons.person_rounded)
-                                  : null,
                             ),
                             title: Text(
                               user.displayName.isNotEmpty

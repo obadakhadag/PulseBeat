@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/follow_controller.dart';
+import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 import 'followers_following_list_page.dart';
 
@@ -153,15 +154,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       padding: const EdgeInsets.all(22),
                       child: Column(
                         children: <Widget>[
-                          CircleAvatar(
-                            radius: 54,
-                            backgroundImage: photoUrl.isNotEmpty
-                                ? NetworkImage(photoUrl)
-                                : null,
-                            child: photoUrl.isEmpty
-                                ? const Icon(Icons.person_rounded, size: 42)
-                                : null,
-                          ),
+                          AppUserAvatar(photoUrl: photoUrl, radius: 54),
                           const SizedBox(height: 14),
                           Text(
                             displayName,

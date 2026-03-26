@@ -3,6 +3,10 @@ class AppConstants {
 
   static const String appName = 'PulseBeat';
   static const String storageBox = 'pulsebeat_box';
+  static const String defaultAvatarAsset = 'assets/images/default_avatar.png';
+  static const String launcherIconAsset =
+      'assets/branding/pulsebeat_launcher_icon.png';
+  static const String profileImagesFolder = 'profile_images';
   static const String favoritesKey = 'favorites';
   static const String recentKey = 'recent_tracks';
   static const String playCountsKey = 'play_counts';

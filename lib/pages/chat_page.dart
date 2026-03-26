@@ -18,6 +18,7 @@ import '../core/constants/app_constants.dart';
 import '../data/models/song_model.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_debug_service.dart';
+import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 import '../widgets/song_artwork.dart';
 import 'user_profile_page.dart';
@@ -1469,15 +1470,7 @@ class _ChatPageState extends State<ChatPage> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundImage: photoUrl.isNotEmpty
-                        ? NetworkImage(photoUrl)
-                        : null,
-                    child: photoUrl.isEmpty
-                        ? const Icon(Icons.person_rounded, size: 18)
-                        : null,
-                  ),
+                  AppUserAvatar(photoUrl: photoUrl, radius: 18, iconSize: 18),
                   const SizedBox(width: 10),
                   Flexible(
                     child: Column(

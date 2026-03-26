@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import '../pages/chat_list_page.dart';
 import '../core/bindings/app_bindings.dart';
 import '../pages/chat_page.dart';
-import '../pages/collection_page.dart';
+import '../pages/dashboard_page.dart';
 import '../pages/favorite_songs_page.dart';
 import '../pages/follow_requests_page.dart';
 import '../pages/profile_page.dart';
@@ -30,7 +30,8 @@ class AppPages {
   static const String chat = '/chat';
   static const String chatList = '/chatList';
   static const String followRequests = '/followRequests';
-  static const String collection = '/collection';
+  static const String dashboard = '/dashboard';
+  static const String collection = dashboard;
   static const String search = '/search';
   static const String favoriteSongs = '/favoriteSongs';
 
@@ -46,7 +47,6 @@ class AppPages {
     GetPage<dynamic>(
       name: home,
       page: () => const HomeScreen(),
-      binding: HomeBinding(),
       transition: Transition.fadeIn,
       transitionDuration: _pageTransitionDuration,
     ),
@@ -93,9 +93,8 @@ class AppPages {
       transitionDuration: _pageTransitionDuration,
     ),
     GetPage<dynamic>(
-      name: collection,
-      page: () => const CollectionPage(),
-      binding: HomeBinding(),
+      name: dashboard,
+      page: () => const DashboardPage(),
       transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),
@@ -108,7 +107,6 @@ class AppPages {
     GetPage<dynamic>(
       name: favoriteSongs,
       page: () => const FavoriteSongsPage(),
-      binding: HomeBinding(),
       transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),

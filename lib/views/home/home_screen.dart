@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     controller.setSection(HomeSection.all);
+    controller.ensureInitialLibraryLoad();
   }
 
   Future<void> _openSortSheet() {
@@ -47,9 +48,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final double contentBottomInset = MainSectionScaffold.bodyBottomInset();
-      final double fabBottom =
-          kMainSectionFloatingNavBottom + kMainSectionFloatingNavHeight + 20;
+      final double contentBottomInset = MainSectionScaffold.bodyBottomInset(
+        withMiniPlayer: true,
+      );
+      final double fabBottom = MainSectionScaffold.bodyBottomInset(
+        withMiniPlayer: true,
+      );
 
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,

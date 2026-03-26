@@ -118,9 +118,7 @@ class HomeController extends GetxController {
     ], (_) => _applyFilters());
   }
 
-  @override
-  void onReady() {
-    super.onReady();
+  void ensureInitialLibraryLoad() {
     if (_didRequestInitialLibraryLoad) {
       return;
     }
@@ -221,6 +219,90 @@ class HomeController extends GetxController {
 
   List<SongModel> get featuredSongs =>
       visibleSongs.take(5).toList(growable: false);
+
+  List<SongModel> get downloadedSongs => songs
+      .where(
+        (SongModel song) => song.normalizedFilePath.toLowerCase().contains(
+          '/${AppConstants.downloadedSongsFolder.toLowerCase()}/',
+        ),
+      )
+      .toList(growable: false);
+
+  List<SongModel> get recentlyPlayedSongs => recentIds
+      .map(findSongById)
+      .whereType<SongModel>()
+      .toList(growable: false);
+
+  List<SongModel> get mostPlayedSongs {
+    final List<SongModel> ranked = songs
+        .where((SongModel song) => playCountFor(song.id) > 0)
+        .toList(growable: false);
+    ranked.sort((SongModel a, SongModel b) {
+      final int playDifference = playCountFor(
+        b.id,
+      ).compareTo(playCountFor(a.id));
+      if (playDifference != 0) {
+        return playDifference;
+      }
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
+    return ranked;
+  }
+
+  int get listenedSongsCount =>
+      songs.where((SongModel song) => playCountFor(song.id) > 0).length;
+
+  int get totalArtistCount => songs
+      .map(
+        (SongModel song) =>
+            song.artist.trim().isEmpty ? '<unknown>' : song.artist.trim(),
+      )
+      .toSet()
+      .length;
+
+  int get totalFolderCount => songs
+      .map(
+        (SongModel song) => song.folderPath.trim().isEmpty
+            ? 'unknown-folder'
+            : song.folderPath.trim(),
+      )
+      .toSet()
+      .length;
+
+  String? get mostPlayedArtist {
+    if (songs.isEmpty || totalPlayCount == 0) {
+      return null;
+    }
+
+    final Map<String, int> artistCounts = <String, int>{};
+    for (final SongModel song in songs) {
+      final int count = playCountFor(song.id);
+      if (count <= 0) {
+        continue;
+      }
+
+      final String artist = song.artist.trim().isEmpty
+          ? 'Unknown Artist'.tr
+          : song.artist.trim();
+      artistCounts[artist] = (artistCounts[artist] ?? 0) + count;
+    }
+
+    if (artistCounts.isEmpty) {
+      return null;
+    }
+
+    final List<MapEntry<String, int>> rankedArtists =
+        artistCounts.entries.toList()
+          ..sort((MapEntry<String, int> a, MapEntry<String, int> b) {
+            final int difference = b.value.compareTo(a.value);
+            if (difference != 0) {
+              return difference;
+            }
+            return a.key.toLowerCase().compareTo(b.key.toLowerCase());
+          });
+
+    return rankedArtists.first.key;
+  }
 
   List<LibraryCollectionGroup> collectionGroupsFor(
     HomeBrowseCategory category,

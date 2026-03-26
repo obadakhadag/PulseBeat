@@ -31,11 +31,21 @@ class AuthService {
   Future<UserCredential> signUpWithEmail({
     required String email,
     required String password,
-  }) {
-    return _firebaseAuth.createUserWithEmailAndPassword(
-      email: email.trim(),
-      password: password,
-    );
+    String? displayName,
+  }) async {
+    final UserCredential credential = await _firebaseAuth
+        .createUserWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        );
+
+    final String trimmedDisplayName = displayName?.trim() ?? '';
+    if (trimmedDisplayName.isNotEmpty) {
+      await credential.user?.updateDisplayName(trimmedDisplayName);
+      await credential.user?.reload();
+    }
+
+    return credential;
   }
 
   Future<UserCredential> loginWithEmail({

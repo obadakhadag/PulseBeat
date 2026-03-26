@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
+import '../controllers/player_controller.dart';
 import '../routes/app_pages.dart';
 import 'floating_music_nav_bar.dart';
 import 'music_page_background.dart';
@@ -27,18 +29,27 @@ class MainSectionScaffold extends StatelessWidget {
   final FloatingActionButtonLocation? floatingActionButtonLocation;
 
   static double bodyBottomInset({bool withMiniPlayer = false}) {
+    final bool showMiniPlayer =
+        withMiniPlayer &&
+        Get.isRegistered<PlayerController>() &&
+        Get.find<PlayerController>().currentSong.value != null;
+
     return withMiniPlayer
-        ? kMainSectionFloatingNavBottom +
-              kMainSectionFloatingNavHeight +
-              88 +
-              36
+        ? (showMiniPlayer
+              ? kMainSectionFloatingNavBottom +
+                    kMainSectionFloatingNavHeight +
+                    88 +
+                    36
+              : kMainSectionFloatingNavBottom +
+                    kMainSectionFloatingNavHeight +
+                    28)
         : kMainSectionFloatingNavBottom + kMainSectionFloatingNavHeight + 28;
   }
 
   bool get _showNav {
     return currentRoute == AppPages.home ||
         currentRoute == AppPages.favoriteSongs ||
-        currentRoute == AppPages.collection ||
+        currentRoute == AppPages.dashboard ||
         currentRoute == AppPages.chatList;
   }
 

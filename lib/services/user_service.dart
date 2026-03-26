@@ -1,46 +1,25 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
+import '../core/constants/app_constants.dart';
 import '../models/user_model.dart';
 
 class UserService {
-  UserService({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+  UserService({FirebaseFirestore? firestore, FirebaseStorage? storage})
+    : _firestore = firestore ?? FirebaseFirestore.instance,
+      _storage = storage ?? FirebaseStorage.instance;
 
   final FirebaseFirestore _firestore;
+  final FirebaseStorage _storage;
 
   CollectionReference<Map<String, dynamic>> get _usersCollection =>
       _firestore.collection('users');
 
   Future<void> createUserProfile(User firebaseUser) async {
-    final String email = firebaseUser.email ?? '';
-    final String? trimmedDisplayName = firebaseUser.displayName?.trim();
-    final String username = _usernameFromEmail(
-      email: email,
-      uid: firebaseUser.uid,
-    );
-
-    final UserModel userModel = UserModel(
-      uid: firebaseUser.uid,
-      email: email,
-      username: username,
-      displayName: trimmedDisplayName == null || trimmedDisplayName.isEmpty
-          ? username
-          : trimmedDisplayName,
-      photoUrl: firebaseUser.photoURL ?? '',
-      bio: '',
-      isPrivate: false,
-      followersCount: 0,
-      followingCount: 0,
-      createdAt: null,
-      lastLogin: null,
-    );
-
-    await _usersCollection.doc(firebaseUser.uid).set(<String, dynamic>{
-      ...userModel.toMap(),
-      'createdAt': FieldValue.serverTimestamp(),
-      'lastLogin': FieldValue.serverTimestamp(),
-    });
+    await ensureUserProfile(firebaseUser);
   }
 
   Future<UserModel?> getUserProfile(String uid) async {
@@ -81,7 +60,10 @@ class UserService {
   }
 
   Future<void> updateProfile(String uid, Map<String, dynamic> data) {
-    return _usersCollection.doc(uid).update(data);
+    return _usersCollection.doc(uid).set(<String, dynamic>{
+      ...data,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> updatePrivacy(bool isPrivate) async {
@@ -90,23 +72,25 @@ class UserService {
       throw StateError('No logged-in user found.');
     }
 
-    await FirebaseFirestore.instance.collection('users').doc(uid).update(
-      <String, dynamic>{'isPrivate': isPrivate},
-    );
+    await updateProfile(uid, <String, dynamic>{'isPrivate': isPrivate});
   }
 
   Future<UserModel> ensureUserProfile(User firebaseUser) async {
     final DocumentReference<Map<String, dynamic>> userRef = _usersCollection
         .doc(firebaseUser.uid);
     final DocumentSnapshot<Map<String, dynamic>> snapshot = await userRef.get();
+    final Map<String, dynamic>? rawData = snapshot.data();
+    final UserModel? existingProfile = rawData == null
+        ? null
+        : UserModel.fromMap(<String, dynamic>{
+            ...rawData,
+            'uid': rawData['uid'] ?? snapshot.id,
+          });
 
-    if (!snapshot.exists) {
-      await createUserProfile(firebaseUser);
-    } else {
-      await userRef.update(<String, dynamic>{
-        'lastLogin': FieldValue.serverTimestamp(),
-      });
-    }
+    await userRef.set(
+      _buildUserProfileDocument(firebaseUser, existingProfile: existingProfile),
+      SetOptions(merge: true),
+    );
 
     final UserModel? profile = await getUserProfile(firebaseUser.uid);
     if (profile != null) {
@@ -116,6 +100,133 @@ class UserService {
     throw StateError('Unable to load user profile after login.');
   }
 
+  Future<UserModel> updateCurrentUserPhoto({
+    required User firebaseUser,
+    required File file,
+  }) async {
+    final String extension = _extensionFromPath(file.path);
+    final String objectName =
+        '${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final Reference reference = _storage
+        .ref()
+        .child(AppConstants.profileImagesFolder)
+        .child(firebaseUser.uid)
+        .child(objectName);
+
+    await reference.putFile(
+      file,
+      SettableMetadata(contentType: _contentTypeForExtension(extension)),
+    );
+
+    final String downloadUrl = await reference.getDownloadURL();
+    await updateProfile(firebaseUser.uid, <String, dynamic>{
+      'photoUrl': downloadUrl,
+    });
+
+    await firebaseUser.updatePhotoURL(downloadUrl);
+    return ensureUserProfile(firebaseUser);
+  }
+
+  Map<String, dynamic> _buildUserProfileDocument(
+    User firebaseUser, {
+    UserModel? existingProfile,
+  }) {
+    final String email = (firebaseUser.email ?? existingProfile?.email ?? '')
+        .trim();
+    final String username = _resolvedUsername(
+      email: email,
+      uid: firebaseUser.uid,
+      existingUsername: existingProfile?.username,
+    );
+    final String displayName = _resolvedDisplayName(
+      firebaseUser: firebaseUser,
+      username: username,
+      existingDisplayName: existingProfile?.displayName,
+    );
+
+    return <String, dynamic>{
+      'uid': firebaseUser.uid,
+      'email': email,
+      'username': username,
+      'displayName': displayName,
+      'photoUrl': _resolvedPhotoUrl(
+        firebaseUser,
+        existingProfile: existingProfile,
+      ),
+      'authProvider': _resolvedAuthProvider(firebaseUser, existingProfile),
+      'bio': existingProfile?.bio ?? '',
+      'isPrivate': existingProfile?.isPrivate ?? false,
+      'followersCount': existingProfile?.followersCount ?? 0,
+      'followingCount': existingProfile?.followingCount ?? 0,
+      'createdAt': existingProfile?.createdAt ?? FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'lastLogin': FieldValue.serverTimestamp(),
+    };
+  }
+
+  String _resolvedUsername({
+    required String email,
+    required String uid,
+    String? existingUsername,
+  }) {
+    final String trimmedExisting = existingUsername?.trim() ?? '';
+    if (trimmedExisting.isNotEmpty) {
+      return trimmedExisting;
+    }
+    return _usernameFromEmail(email: email, uid: uid);
+  }
+
+  String _resolvedDisplayName({
+    required User firebaseUser,
+    required String username,
+    String? existingDisplayName,
+  }) {
+    final String trimmedExisting = existingDisplayName?.trim() ?? '';
+    if (trimmedExisting.isNotEmpty) {
+      return trimmedExisting;
+    }
+
+    final String trimmedFirebaseName = firebaseUser.displayName?.trim() ?? '';
+    if (trimmedFirebaseName.isNotEmpty) {
+      return trimmedFirebaseName;
+    }
+
+    return username;
+  }
+
+  String _resolvedPhotoUrl(User firebaseUser, {UserModel? existingProfile}) {
+    final String trimmedExisting = existingProfile?.photoUrl.trim() ?? '';
+    if (trimmedExisting.isNotEmpty) {
+      return trimmedExisting;
+    }
+
+    final String trimmedFirebasePhoto = firebaseUser.photoURL?.trim() ?? '';
+    if (trimmedFirebasePhoto.isNotEmpty) {
+      return trimmedFirebasePhoto;
+    }
+
+    return AppConstants.defaultAvatarAsset;
+  }
+
+  String _resolvedAuthProvider(User firebaseUser, UserModel? existingProfile) {
+    final String explicitProvider = firebaseUser.providerData
+        .map((UserInfo item) => item.providerId.trim())
+        .firstWhere(
+          (String item) => item.isNotEmpty && item != 'firebase',
+          orElse: () => '',
+        );
+    if (explicitProvider.isNotEmpty) {
+      return explicitProvider;
+    }
+
+    final String existingProvider = existingProfile?.authProvider.trim() ?? '';
+    if (existingProvider.isNotEmpty) {
+      return existingProvider;
+    }
+
+    return 'unknown';
+  }
+
   String _usernameFromEmail({required String email, required String uid}) {
     final String raw = email.split('@').first.toLowerCase();
     final String sanitized = raw.replaceAll(RegExp(r'[^a-z0-9_.]'), '');
@@ -123,5 +234,29 @@ class UserService {
       return sanitized;
     }
     return 'user_${uid.substring(0, 6)}';
+  }
+
+  String _extensionFromPath(String path) {
+    final int dotIndex = path.lastIndexOf('.');
+    if (dotIndex == -1 || dotIndex == path.length - 1) {
+      return 'jpg';
+    }
+
+    final String extension = path.substring(dotIndex + 1).toLowerCase();
+    if (extension == 'png' ||
+        extension == 'webp' ||
+        extension == 'jpg' ||
+        extension == 'jpeg') {
+      return extension == 'jpeg' ? 'jpg' : extension;
+    }
+    return 'jpg';
+  }
+
+  String _contentTypeForExtension(String extension) {
+    return switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'image/jpeg',
+    };
   }
 }

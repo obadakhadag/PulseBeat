@@ -1,20 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../controllers/auth_controller.dart';
+import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 import 'followers_following_list_page.dart';
 
 class ProfilePage extends GetView<AuthController> {
   const ProfilePage({super.key});
 
-  Future<void> _editBio(
-    BuildContext context,
-    String uid,
-    String currentBio,
-  ) async {
+  Future<void> _editBio(BuildContext context, String currentBio) async {
     final TextEditingController bioController = TextEditingController(
       text: currentBio,
     );
@@ -50,18 +47,26 @@ class ProfilePage extends GetView<AuthController> {
       return;
     }
 
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update(
-        <String, dynamic>{'bio': newBio},
-      );
-    } catch (_) {
-      Get.snackbar('Error'.tr, 'Failed to update bio.'.tr);
+    await controller.updateBio(newBio);
+  }
+
+  Future<void> _pickProfileImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? file = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 88,
+    );
+    if (file == null) {
+      return;
     }
+
+    await controller.updateProfilePhoto(file.path);
   }
 
   @override
   Widget build(BuildContext context) {
-    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    final String? uid = controller.uid;
     if (uid == null || uid.isEmpty) {
       return Scaffold(body: Center(child: Text('Profile not found.'.tr)));
     }
@@ -146,16 +151,38 @@ class ProfilePage extends GetView<AuthController> {
                       padding: const EdgeInsets.all(22),
                       child: Column(
                         children: <Widget>[
-                          CircleAvatar(
-                            radius: 54,
-                            backgroundImage: photoUrl.isNotEmpty
-                                ? NetworkImage(photoUrl)
-                                : null,
-                            child: photoUrl.isEmpty
-                                ? const Icon(Icons.person_rounded, size: 42)
-                                : null,
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: <Widget>[
+                              AppUserAvatar(photoUrl: photoUrl, radius: 54),
+                              Positioned(
+                                right: -2,
+                                bottom: -2,
+                                child: Obx(
+                                  () => FilledButton(
+                                    onPressed: controller.isUpdatingPhoto.value
+                                        ? null
+                                        : _pickProfileImage,
+                                    style: FilledButton.styleFrom(
+                                      minimumSize: const Size(44, 44),
+                                      padding: EdgeInsets.zero,
+                                      shape: const CircleBorder(),
+                                    ),
+                                    child: controller.isUpdatingPhoto.value
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(Icons.camera_alt_rounded),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Text(
                             displayName,
                             style: Theme.of(context).textTheme.headlineSmall
@@ -179,7 +206,17 @@ class ProfilePage extends GetView<AuthController> {
                                       .withValues(alpha: 0.60),
                                 ),
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 12),
+                          Obx(
+                            () => TextButton.icon(
+                              onPressed: controller.isUpdatingPhoto.value
+                                  ? null
+                                  : _pickProfileImage,
+                              icon: const Icon(Icons.image_outlined),
+                              label: const Text('Change profile photo'),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
                           Row(
                             children: <Widget>[
                               Expanded(
@@ -246,23 +283,13 @@ class ProfilePage extends GetView<AuthController> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Switch.adaptive(
-                            value: isPrivate,
-                            onChanged: (bool value) async {
-                              try {
-                                await FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(uid)
-                                    .update(<String, dynamic>{
-                                      'isPrivate': value,
-                                    });
-                              } catch (_) {
-                                Get.snackbar(
-                                  'Error'.tr,
-                                  'Failed to update privacy setting.'.tr,
-                                );
-                              }
-                            },
+                          Obx(
+                            () => Switch.adaptive(
+                              value: isPrivate,
+                              onChanged: controller.isUpdatingPrivacy.value
+                                  ? null
+                                  : controller.updatePrivacy,
+                            ),
                           ),
                         ],
                       ),
@@ -284,7 +311,7 @@ class ProfilePage extends GetView<AuthController> {
                               ),
                               const Spacer(),
                               IconButton(
-                                onPressed: () => _editBio(context, uid, bio),
+                                onPressed: () => _editBio(context, bio),
                                 icon: const Icon(Icons.edit_rounded),
                               ),
                             ],

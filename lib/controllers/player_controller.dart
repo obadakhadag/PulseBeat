@@ -38,19 +38,25 @@ class PlayerController extends GetxController {
   final RxString lyrics = ''.obs;
   final RxMap<int, int> playCounts = <int, int>{}.obs;
 
-  int? _lastCountedSongId;
-  int? _pendingManualPlaySongId;
+  PlayerState _latestPlayerState = PlayerState(false, ProcessingState.idle);
+  int? _pendingPlayRegistrationSongId;
   int? _lyricsSongId;
   int _lyricsRequestToken = 0;
+  late final Future<void> _setupFuture;
 
   @override
-  Future<void> onInit() async {
+  void onInit() {
     super.onInit();
+    _setupFuture = _initialize();
+  }
+
+  Future<void> _initialize() async {
     await _storageService.ensureInitialized();
 
     showLyrics.value = _storageService.getShowLyrics();
     playCounts.addAll(_storageService.getPlayCounts());
     await _audioService.init();
+    _syncInitialPlayerState();
 
     ever<SongModel?>(currentSong, (SongModel? song) {
       if (song == null) {
@@ -66,14 +72,17 @@ class PlayerController extends GetxController {
     });
 
     _audioService.playerStateStream.listen((PlayerState state) {
+      _latestPlayerState = state;
       isPlaying.value = state.playing;
       isBuffering.value =
           state.processingState == ProcessingState.loading ||
           state.processingState == ProcessingState.buffering;
+      _tryRegisterPendingPlay();
     });
-    _audioService.positionStream.listen(
-      (Duration value) => position.value = value,
-    );
+    _audioService.positionStream.listen((Duration value) {
+      position.value = value;
+      _tryRegisterPendingPlay();
+    });
     _audioService.durationStream.listen(
       (Duration? value) => total.value = value ?? Duration.zero,
     );
@@ -82,12 +91,8 @@ class PlayerController extends GetxController {
         final song = queue[index];
         final previousSongId = currentSong.value?.id;
         currentSong.value = song;
-        if (_pendingManualPlaySongId == song.id) {
-          _pendingManualPlaySongId = null;
-          return;
-        }
         if (previousSongId != song.id) {
-          _registerPlay(song.id);
+          _preparePlayRegistration(song.id);
         }
       }
     });
@@ -103,6 +108,8 @@ class PlayerController extends GetxController {
     List<SongModel> songs,
     SongModel selectedSong,
   ) async {
+    await _setupFuture;
+
     if (songs.isEmpty) {
       return;
     }
@@ -115,14 +122,15 @@ class PlayerController extends GetxController {
     }
 
     queue.assignAll(songs);
-    _pendingManualPlaySongId = selectedSong.id;
     await _audioService.setQueue(songs, initialIndex: index);
     currentSong.value = songs[index];
-    _registerPlay(selectedSong.id, force: true);
+    _preparePlayRegistration(selectedSong.id);
     await _audioService.play();
   }
 
   Future<void> togglePlayback() async {
+    await _setupFuture;
+
     if (isPlaying.value) {
       await _audioService.pause();
       return;
@@ -130,14 +138,39 @@ class PlayerController extends GetxController {
     await _audioService.play();
   }
 
-  Future<void> play() => _audioService.play();
-  Future<void> pause() => _audioService.pause();
-  Future<void> stop() => _audioService.stop();
-  Future<void> seek(Duration value) => _audioService.seek(value);
-  Future<void> next() => _audioService.skipToNext();
-  Future<void> previous() => _audioService.skipToPrevious();
+  Future<void> play() async {
+    await _setupFuture;
+    await _audioService.play();
+  }
+
+  Future<void> pause() async {
+    await _setupFuture;
+    await _audioService.pause();
+  }
+
+  Future<void> stop() async {
+    await _setupFuture;
+    await _audioService.stop();
+  }
+
+  Future<void> seek(Duration value) async {
+    await _setupFuture;
+    await _audioService.seek(value);
+  }
+
+  Future<void> next() async {
+    await _setupFuture;
+    await _audioService.skipToNext();
+  }
+
+  Future<void> previous() async {
+    await _setupFuture;
+    await _audioService.skipToPrevious();
+  }
 
   Future<void> cycleLoopMode() async {
+    await _setupFuture;
+
     final nextMode = switch (loopMode.value) {
       LoopMode.off => LoopMode.all,
       LoopMode.all => LoopMode.one,
@@ -147,6 +180,7 @@ class PlayerController extends GetxController {
   }
 
   Future<void> toggleShuffle() async {
+    await _setupFuture;
     await _audioService.setShuffleMode(!shuffleEnabled.value);
   }
 
@@ -208,14 +242,62 @@ class PlayerController extends GetxController {
     AppHelpers.showToast('Scan your device library first.'.tr);
   }
 
-  void _registerPlay(int songId, {bool force = false}) {
-    if (!force && _lastCountedSongId == songId) {
+  void _syncInitialPlayerState() {
+    queue.assignAll(_audioService.queue);
+    _latestPlayerState = _audioService.playerState;
+    isPlaying.value = _latestPlayerState.playing;
+    isBuffering.value =
+        _latestPlayerState.processingState == ProcessingState.loading ||
+        _latestPlayerState.processingState == ProcessingState.buffering;
+    position.value = _audioService.position;
+    total.value = _audioService.duration ?? Duration.zero;
+    loopMode.value = _audioService.loopMode;
+    shuffleEnabled.value = _audioService.shuffleModeEnabled;
+
+    final int? currentIndex = _audioService.currentIndex;
+    if (currentIndex != null &&
+        currentIndex >= 0 &&
+        currentIndex < queue.length) {
+      currentSong.value = queue[currentIndex];
+    }
+  }
+
+  void _preparePlayRegistration(int songId) {
+    _pendingPlayRegistrationSongId = songId;
+    position.value = Duration.zero;
+  }
+
+  void _tryRegisterPendingPlay() {
+    final SongModel? song = currentSong.value;
+    final int? pendingSongId = _pendingPlayRegistrationSongId;
+    if (song == null || pendingSongId == null || pendingSongId != song.id) {
       return;
     }
 
-    playCounts[songId] = (playCounts[songId] ?? 0) + 1;
-    _lastCountedSongId = songId;
+    if (!_latestPlayerState.playing ||
+        _latestPlayerState.processingState != ProcessingState.ready) {
+      return;
+    }
+
+    final Duration threshold = _playCountThreshold(song);
+    if (position.value < threshold) {
+      return;
+    }
+
+    playCounts[song.id] = (playCounts[song.id] ?? 0) + 1;
+    _pendingPlayRegistrationSongId = null;
     _storageService.setPlayCounts(playCounts);
+  }
+
+  Duration _playCountThreshold(SongModel song) {
+    final int durationMs = song.duration.inMilliseconds;
+    final int targetMs = durationMs <= 0 ? 3000 : durationMs ~/ 5;
+    final int clampedTargetMs = targetMs < 3000
+        ? 3000
+        : targetMs > 15000
+        ? 15000
+        : targetMs;
+    return Duration(milliseconds: clampedTargetMs);
   }
 
   Future<void> _persistShowLyrics(bool value) async {

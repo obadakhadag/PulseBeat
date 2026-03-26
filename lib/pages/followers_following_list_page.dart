@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 import 'user_profile_page.dart';
 
@@ -165,14 +166,9 @@ class _FollowListPage extends StatelessWidget {
                                         UserProfilePage(uid: trimmedUid),
                                   ),
                                 ),
-                                leading: CircleAvatar(
+                                leading: AppUserAvatar(
+                                  photoUrl: photoUrl,
                                   radius: 26,
-                                  backgroundImage: photoUrl.isNotEmpty
-                                      ? NetworkImage(photoUrl)
-                                      : null,
-                                  child: photoUrl.isEmpty
-                                      ? const Icon(Icons.person_rounded)
-                                      : null,
                                 ),
                                 title: Text(
                                   displayName,

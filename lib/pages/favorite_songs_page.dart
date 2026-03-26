@@ -19,6 +19,8 @@ class FavoriteSongsPage extends GetView<HomeController> {
 
   @override
   Widget build(BuildContext context) {
+    controller.ensureInitialLibraryLoad();
+
     return Scaffold(
       body: MainSectionScaffold(
         currentRoute: AppPages.favoriteSongs,
@@ -129,7 +131,9 @@ class FavoriteSongsPage extends GetView<HomeController> {
                               20,
                               0,
                               20,
-                              MainSectionScaffold.bodyBottomInset(),
+                              MainSectionScaffold.bodyBottomInset(
+                                withMiniPlayer: true,
+                              ),
                             ),
                             itemCount: songs.length + 1,
                             separatorBuilder: (_, int index) =>
@@ -181,8 +185,7 @@ class FavoriteSongsPage extends GetView<HomeController> {
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
-                                                'This page reads the same favorite IDs used across Home and Collection.'
-                                                    .tr,
+                                                'This page reads the same favorite IDs used across Home and Dashboard.',
                                                 style: Theme.of(context)
                                                     .textTheme
                                                     .bodyMedium

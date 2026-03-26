@@ -8,9 +8,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/bindings/app_bindings.dart';
 import 'core/constants/app_constants.dart';
 import 'core/themes/app_theme.dart';
+import 'controllers/app_shell_controller.dart';
 import 'localization/app_translations.dart';
 import 'routes/app_pages.dart';
 import 'services/storage_service.dart';
+import 'widgets/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -70,6 +72,10 @@ class MyApp extends StatelessWidget {
       getPages: AppPages.pages,
       initialRoute: AppPages.splash,
       initialBinding: InitialBinding(),
+      navigatorObservers: <NavigatorObserver>[AppShellNavigatorObserver()],
+      builder: (BuildContext context, Widget? child) {
+        return AppShell(child: child ?? const SizedBox.shrink());
+      },
     );
   }
 }

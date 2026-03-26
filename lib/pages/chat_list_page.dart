@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../routes/app_pages.dart';
+import '../widgets/app_user_avatar.dart';
 import '../widgets/main_section_scaffold.dart';
 import '../widgets/music_page_background.dart';
 
@@ -82,7 +83,9 @@ class ChatListPage extends StatelessWidget {
                         20,
                         12,
                         20,
-                        MainSectionScaffold.bodyBottomInset(),
+                        MainSectionScaffold.bodyBottomInset(
+                          withMiniPlayer: true,
+                        ),
                       ),
                       itemCount: chats.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 12),
@@ -160,14 +163,9 @@ class ChatListPage extends StatelessWidget {
                                   AppPages.chat,
                                   arguments: chatArgs,
                                 ),
-                                leading: CircleAvatar(
+                                leading: AppUserAvatar(
+                                  photoUrl: photoUrl,
                                   radius: 26,
-                                  backgroundImage: photoUrl.isNotEmpty
-                                      ? NetworkImage(photoUrl)
-                                      : null,
-                                  child: photoUrl.isEmpty
-                                      ? const Icon(Icons.person_rounded)
-                                      : null,
                                 ),
                                 title: Text(
                                   displayName,

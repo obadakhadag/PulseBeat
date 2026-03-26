@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 import 'user_profile_page.dart';
 
@@ -236,14 +237,9 @@ class _FollowRequestsPageState extends State<FollowRequestsPage> {
                                   children: <Widget>[
                                     GestureDetector(
                                       onTap: () => _openUserProfile(fromUid),
-                                      child: CircleAvatar(
+                                      child: AppUserAvatar(
+                                        photoUrl: photoUrl,
                                         radius: 26,
-                                        backgroundImage: photoUrl.isNotEmpty
-                                            ? NetworkImage(photoUrl)
-                                            : null,
-                                        child: photoUrl.isEmpty
-                                            ? const Icon(Icons.person_rounded)
-                                            : null,
                                       ),
                                     ),
                                     const SizedBox(width: 12),

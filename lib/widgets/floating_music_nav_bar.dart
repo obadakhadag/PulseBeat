@@ -25,9 +25,9 @@ class FloatingMusicNavBar extends StatelessWidget {
         label: 'Favorites',
       ),
       _NavItem(
-        route: AppPages.collection,
-        icon: Icons.library_music_rounded,
-        label: 'Collectio',
+        route: AppPages.dashboard,
+        icon: Icons.dashboard_rounded,
+        label: 'Dashboard',
       ),
       _NavItem(
         route: AppPages.chatList,
