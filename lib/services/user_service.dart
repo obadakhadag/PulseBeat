@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
+import '../core/utils/library_identity.dart';
 import '../core/constants/app_constants.dart';
 import '../models/user_model.dart';
 
@@ -73,6 +74,51 @@ class UserService {
     }
 
     await updateProfile(uid, <String, dynamic>{'isPrivate': isPrivate});
+  }
+
+  Future<void> syncUserLibrary({
+    required String uid,
+    required Iterable<String> libraryIds,
+  }) {
+    final List<String> normalizedIds =
+        libraryIds
+            .map((String item) => item.trim())
+            .where((String item) => item.isNotEmpty)
+            .toSet()
+            .toList(growable: false)
+          ..sort((String a, String b) => a.compareTo(b));
+
+    return updateProfile(uid, <String, dynamic>{'userLibrary': normalizedIds});
+  }
+
+  Future<LibrarySimilarityResult> loadLibrarySimilarity({
+    required String currentUid,
+    required String targetUid,
+    required Iterable<String> currentLibraryIds,
+  }) async {
+    final String normalizedTargetUid = targetUid.trim();
+    final String normalizedCurrentUid = currentUid.trim();
+
+    if (normalizedTargetUid.isEmpty) {
+      return calculateLibrarySimilarity(
+        currentIds: currentLibraryIds,
+        targetIds: const <String>[],
+      );
+    }
+
+    if (normalizedCurrentUid == normalizedTargetUid &&
+        normalizedCurrentUid.isNotEmpty) {
+      return calculateLibrarySimilarity(
+        currentIds: currentLibraryIds,
+        targetIds: currentLibraryIds,
+      );
+    }
+
+    final UserModel? targetProfile = await getUserProfile(normalizedTargetUid);
+    return calculateLibrarySimilarity(
+      currentIds: currentLibraryIds,
+      targetIds: targetProfile?.librarySongIds ?? const <String>[],
+    );
   }
 
   Future<UserModel> ensureUserProfile(User firebaseUser) async {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
+import '../core/utils/library_identity.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/helpers.dart';
 import '../data/models/song_model.dart';
@@ -10,6 +11,9 @@ import '../data/repositories/audio_repository.dart';
 import '../routes/app_pages.dart';
 import '../services/permissions_service.dart';
 import '../services/storage_service.dart';
+import '../services/user_service.dart';
+import 'app_controller.dart';
+import 'auth_controller.dart';
 import 'player_controller.dart';
 
 enum LibrarySort { newest, title, artist, duration }
@@ -148,6 +152,7 @@ class HomeController extends GetxController {
       if (!_hasSameSongs(songs, results)) {
         songs.assignAll(results);
       }
+      unawaited(_cacheAndMaybeSyncLibrary(results));
     } finally {
       isLoading.value = false;
     }
@@ -564,6 +569,40 @@ class HomeController extends GetxController {
     final shouldShow = scrollController.offset > 520;
     if (showScrollToTop.value != shouldShow) {
       showScrollToTop.value = shouldShow;
+    }
+  }
+
+  Future<void> _cacheAndMaybeSyncLibrary(List<SongModel> librarySongs) async {
+    final List<String> libraryIds = buildLibrarySongIds(librarySongs);
+    _storageService.setCachedLibrarySongIds(libraryIds);
+
+    try {
+      final AppController appController = Get.find<AppController>();
+      if (!appController.isOnline) {
+        return;
+      }
+
+      final AuthController authController = Get.find<AuthController>();
+      final String currentUid = authController.uid?.trim() ?? '';
+      if (currentUid.isEmpty) {
+        return;
+      }
+
+      final String signature = buildLibraryIdsSignature(libraryIds);
+      if (_storageService.getLastLibrarySyncUid() == currentUid &&
+          _storageService.getLastLibrarySyncSignature() == signature) {
+        return;
+      }
+
+      await Get.find<UserService>().syncUserLibrary(
+        uid: currentUid,
+        libraryIds: libraryIds,
+      );
+
+      _storageService.setLastLibrarySyncUid(currentUid);
+      _storageService.setLastLibrarySyncSignature(signature);
+    } catch (_) {
+      // Keep local library loading resilient even if cloud sync is unavailable.
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:get_storage/get_storage.dart';
 
 import '../core/constants/app_constants.dart';
+import '../core/enums/app_mode.dart';
 import '../data/models/song_model.dart';
 
 class StorageService {
@@ -182,6 +183,53 @@ class StorageService {
 
   void setThemeMode(String value) {
     _maybeBox?.write(AppConstants.themeModeKey, value);
+  }
+
+  AppMode getAppMode() {
+    final String? rawValue = _maybeBox?.read<String>(AppConstants.appModeKey);
+    return appModeFromStorage(rawValue);
+  }
+
+  void setAppMode(AppMode mode) {
+    _maybeBox?.write(AppConstants.appModeKey, mode.name);
+  }
+
+  List<String> getCachedLibrarySongIds() {
+    final GetStorage? box = _maybeBox;
+    if (box == null) {
+      return const <String>[];
+    }
+
+    return (box.read<List<dynamic>>(AppConstants.cachedLibrarySongIdsKey) ??
+            <dynamic>[])
+        .whereType<String>()
+        .map((String item) => item.trim())
+        .where((String item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  void setCachedLibrarySongIds(Iterable<String> ids) {
+    final List<String> uniqueIds = ids
+        .map((String item) => item.trim())
+        .where((String item) => item.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+
+    _maybeBox?.write(AppConstants.cachedLibrarySongIdsKey, uniqueIds);
+  }
+
+  String getLastLibrarySyncSignature() =>
+      _maybeBox?.read<String>(AppConstants.lastLibrarySyncSignatureKey) ?? '';
+
+  void setLastLibrarySyncSignature(String value) {
+    _maybeBox?.write(AppConstants.lastLibrarySyncSignatureKey, value);
+  }
+
+  String getLastLibrarySyncUid() =>
+      _maybeBox?.read<String>(AppConstants.lastLibrarySyncUidKey) ?? '';
+
+  void setLastLibrarySyncUid(String value) {
+    _maybeBox?.write(AppConstants.lastLibrarySyncUidKey, value);
   }
 
   String getLanguageCode() =>

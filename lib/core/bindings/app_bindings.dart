@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:on_audio_query/on_audio_query.dart';
 
 import '../../controllers/app_shell_controller.dart';
+import '../../controllers/app_controller.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/chat_controller.dart';
 import '../../controllers/follow_controller.dart';
@@ -30,6 +31,11 @@ class InitialBinding extends Bindings {
 
     Get.put<StorageService>(
       StorageService(AppConstants.storageBox),
+      permanent: true,
+    );
+
+    Get.put<AppController>(
+      AppController(storageService: Get.find<StorageService>()),
       permanent: true,
     );
 
@@ -61,6 +67,7 @@ class InitialBinding extends Bindings {
 
     Get.lazyPut<AuthController>(
       () => AuthController(
+        appController: Get.find<AppController>(),
         authService: Get.find<AuthService>(),
         userService: Get.find<UserService>(),
       ),
@@ -105,7 +112,10 @@ class SplashBinding extends Bindings {
   @override
   void dependencies() {
     Get.put<SplashController>(
-      SplashController(storageService: Get.find<StorageService>()),
+      SplashController(
+        storageService: Get.find<StorageService>(),
+        appController: Get.find<AppController>(),
+      ),
     );
   }
 }

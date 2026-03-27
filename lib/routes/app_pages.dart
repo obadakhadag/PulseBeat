@@ -14,6 +14,7 @@ import '../views/home/home_screen.dart';
 import '../views/player/player_screen.dart';
 import '../views/settings/settings_screen.dart';
 import '../views/splash/splash_screen.dart';
+import '../widgets/online_only_gate.dart';
 
 class AppPages {
   const AppPages._();
@@ -64,31 +65,51 @@ class AppPages {
     ),
     GetPage<dynamic>(
       name: profile,
-      page: () => const ProfilePage(),
+      page: () => const OnlineOnlyGate(
+        title: 'Profile is unavailable offline',
+        message: 'Sign in to view and edit your account profile.',
+        child: ProfilePage(),
+      ),
       transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),
     GetPage<dynamic>(
       name: userProfile,
-      page: () => const UserProfilePage(),
+      page: () => const OnlineOnlyGate(
+        title: 'Profiles are unavailable offline',
+        message: 'Sign in to compare libraries and open other user profiles.',
+        child: UserProfilePage(),
+      ),
       transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),
     GetPage<dynamic>(
       name: chat,
-      page: () => const ChatPage(),
+      page: () => const OnlineOnlyGate(
+        title: 'Chat is unavailable offline',
+        message: 'Sign in to open direct messages and social sharing.',
+        child: ChatPage(),
+      ),
       transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),
     GetPage<dynamic>(
       name: chatList,
-      page: () => const ChatListPage(),
+      page: () => const OnlineOnlyGate(
+        title: 'Chats are unavailable offline',
+        message: 'Sign in to see your conversations and message other users.',
+        child: ChatListPage(),
+      ),
       transition: Transition.fadeIn,
       transitionDuration: _pageTransitionDuration,
     ),
     GetPage<dynamic>(
       name: followRequests,
-      page: () => const FollowRequestsPage(),
+      page: () => const OnlineOnlyGate(
+        title: 'Follow requests are unavailable offline',
+        message: 'Sign in to manage followers and social activity.',
+        child: FollowRequestsPage(),
+      ),
       transition: Transition.fadeIn,
       transitionDuration: _pageTransitionDuration,
     ),
@@ -100,7 +121,11 @@ class AppPages {
     ),
     GetPage<dynamic>(
       name: search,
-      page: () => const SearchPage(),
+      page: () => const OnlineOnlyGate(
+        title: 'People search is unavailable offline',
+        message: 'Sign in to search for users and open their profiles.',
+        child: SearchPage(),
+      ),
       transition: Transition.fadeIn,
       transitionDuration: _pageTransitionDuration,
     ),

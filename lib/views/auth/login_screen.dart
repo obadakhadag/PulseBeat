@@ -380,6 +380,17 @@ class _LoginScreenState extends State<LoginScreen> {
                             label: const Text('Google'),
                           ),
                         ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: TextButton.icon(
+                            onPressed: isLoading
+                                ? null
+                                : _authController.continueOffline,
+                            icon: const Icon(Icons.offline_bolt_rounded),
+                            label: const Text('Continue Offline'),
+                          ),
+                        ),
                       ],
                     );
                   }),

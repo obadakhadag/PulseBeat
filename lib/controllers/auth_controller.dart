@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
+import '../core/enums/app_mode.dart';
+import 'app_controller.dart';
 import '../models/user_model.dart';
 import '../routes/app_pages.dart';
 import '../services/auth_service.dart';
@@ -11,11 +13,14 @@ import '../services/user_service.dart';
 
 class AuthController extends GetxController {
   AuthController({
+    required AppController appController,
     required AuthService authService,
     required UserService userService,
-  }) : _authService = authService,
+  }) : _appController = appController,
+       _authService = authService,
        _userService = userService;
 
+  final AppController _appController;
   final AuthService _authService;
   final UserService _userService;
 
@@ -225,8 +230,20 @@ class AuthController extends GetxController {
   }
 
   Future<void> _onLoginSuccess(User firebaseUser) async {
+    await _appController.setAppMode(AppMode.online);
     user.value = firebaseUser;
     userProfile.value = await _userService.ensureUserProfile(firebaseUser);
+    Get.offAllNamed(AppPages.home);
+  }
+
+  Future<void> continueOffline() async {
+    if (isLoading.value) {
+      return;
+    }
+
+    user.value = null;
+    userProfile.value = null;
+    await _appController.setAppMode(AppMode.offline);
     Get.offAllNamed(AppPages.home);
   }
 

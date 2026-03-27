@@ -5,6 +5,9 @@ import 'package:get/get.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/chat_controller.dart';
 import '../controllers/follow_controller.dart';
+import '../core/utils/library_identity.dart';
+import '../services/storage_service.dart';
+import '../services/user_service.dart';
 import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 import 'followers_following_list_page.dart';
@@ -22,8 +25,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
   final AuthController _authController = Get.find<AuthController>();
   final ChatController _chatController = Get.find<ChatController>();
   final FollowController _followController = Get.find<FollowController>();
+  final StorageService _storageService = Get.find<StorageService>();
+  final UserService _userService = Get.find<UserService>();
 
   late final String? _uid = _resolveUid();
+  Future<LibrarySimilarityResult>? _similarityFuture;
 
   String? _resolveUid() {
     final String? constructorUid = widget.uid?.trim();
@@ -81,7 +87,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final String? uid = _uid;
     if (uid != null && uid.isNotEmpty) {
       _followController.loadFollowStatus(uid);
+      if (_authController.uid?.trim() != uid) {
+        _similarityFuture = _loadSimilarity(uid);
+      }
     }
+  }
+
+  Future<LibrarySimilarityResult> _loadSimilarity(String targetUid) {
+    final String currentUid = _authController.uid?.trim() ?? '';
+    return _userService.loadLibrarySimilarity(
+      currentUid: currentUid,
+      targetUid: targetUid,
+      currentLibraryIds: _storageService.getCachedLibrarySongIds(),
+    );
   }
 
   @override
@@ -282,6 +300,44 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       ),
                     ),
                   ),
+                  if (!isOwnProfile && _similarityFuture != null) ...<Widget>[
+                    const SizedBox(height: 16),
+                    FutureBuilder<LibrarySimilarityResult>(
+                      future: _similarityFuture,
+                      builder: (BuildContext context, similaritySnapshot) {
+                        if (similaritySnapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const _LibraryMatchCard(
+                            title: 'Library match',
+                            percentageLabel: '...',
+                            helperText: 'Comparing your libraries...',
+                            progress: null,
+                          );
+                        }
+
+                        final LibrarySimilarityResult result =
+                            similaritySnapshot.data ??
+                            const LibrarySimilarityResult(
+                              matchPercentage: 0,
+                              sharedSongsCount: 0,
+                              unionSongsCount: 0,
+                              currentSongsCount: 0,
+                              targetSongsCount: 0,
+                            );
+
+                        final String helperText = result.hasAnyLibraryData
+                            ? 'You share ${result.sharedSongsCount} songs.'
+                            : 'No library data yet.';
+
+                        return _LibraryMatchCard(
+                          title: 'Library match',
+                          percentageLabel: '${result.matchPercentage}%',
+                          helperText: helperText,
+                          progress: result.matchFraction,
+                        );
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Card(
                     child: Padding(
@@ -361,6 +417,61 @@ class _CounterCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: child,
+    );
+  }
+}
+
+class _LibraryMatchCard extends StatelessWidget {
+  const _LibraryMatchCard({
+    required this.title,
+    required this.percentageLabel,
+    required this.helperText,
+    required this.progress,
+  });
+
+  final String title;
+  final String percentageLabel;
+  final String helperText;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              percentageLabel,
+              style: Theme.of(
+                context,
+              ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(minHeight: 10, value: progress),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              helperText,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.70),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

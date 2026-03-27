@@ -15,6 +15,7 @@ class UserModel {
     required this.createdAt,
     required this.updatedAt,
     required this.lastLogin,
+    this.librarySongIds = const <String>[],
   });
 
   final String uid;
@@ -30,6 +31,7 @@ class UserModel {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? lastLogin;
+  final List<String> librarySongIds;
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
@@ -46,6 +48,11 @@ class UserModel {
       createdAt: _toDateTime(map['createdAt']),
       updatedAt: _toDateTime(map['updatedAt']),
       lastLogin: _toDateTime(map['lastLogin']),
+      librarySongIds: ((map['userLibrary'] as List<dynamic>?) ?? <dynamic>[])
+          .whereType<String>()
+          .map((String item) => item.trim())
+          .where((String item) => item.isNotEmpty)
+          .toList(growable: false),
     );
   }
 
@@ -64,6 +71,7 @@ class UserModel {
       'createdAt': createdAt,
       'updatedAt': updatedAt,
       'lastLogin': lastLogin,
+      'userLibrary': librarySongIds,
     };
   }
 

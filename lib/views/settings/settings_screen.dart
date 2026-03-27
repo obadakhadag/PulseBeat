@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../controllers/app_controller.dart';
 import '../../controllers/auth_controller.dart';
 import '../../controllers/home_controller.dart';
 import '../../controllers/player_controller.dart';
 import '../../controllers/settings_controller.dart';
+import '../../core/enums/app_mode.dart';
 import '../../routes/app_pages.dart';
 import '../../widgets/music_page_background.dart';
 
@@ -15,13 +17,18 @@ class SettingsScreen extends GetView<SettingsController> {
   Widget build(BuildContext context) {
     final HomeController homeController = Get.find<HomeController>();
     final PlayerController playerController = Get.find<PlayerController>();
-    final AuthController authController = Get.find<AuthController>();
+    final AppController appController = Get.find<AppController>();
 
     return Scaffold(
       body: MusicPageBackground(
         child: SafeArea(
-          child: Obx(
-            () => ListView(
+          child: Obx(() {
+            final bool isOnline = appController.isOnline;
+            final AuthController? authController = isOnline
+                ? Get.find<AuthController>()
+                : null;
+
+            return ListView(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
               children: <Widget>[
                 Row(
@@ -149,24 +156,24 @@ class SettingsScreen extends GetView<SettingsController> {
                 ),
                 const SizedBox(height: 16),
                 _Panel(
-                  title: 'Account'.tr,
+                  title: isOnline ? 'Account'.tr : 'Offline mode',
                   child: Column(
                     children: <Widget>[
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('Open profile'.tr),
-                        subtitle: Text(
-                          'View your Firebase profile details.'.tr,
+                      if (isOnline) ...<Widget>[
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Open profile'.tr),
+                          subtitle: Text(
+                            'View your Firebase profile details.'.tr,
+                          ),
+                          trailing: const Icon(Icons.person_rounded),
+                          onTap: () => Get.toNamed(AppPages.profile),
                         ),
-                        trailing: const Icon(Icons.person_rounded),
-                        onTap: () => Get.toNamed(AppPages.profile),
-                      ),
-                      Obx(
-                        () => ListTile(
+                        ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text('Logout'.tr),
                           subtitle: Text('Sign out from your account.'.tr),
-                          trailing: authController.isLoading.value
+                          trailing: authController!.isLoading.value
                               ? const SizedBox(
                                   width: 18,
                                   height: 18,
@@ -180,7 +187,28 @@ class SettingsScreen extends GetView<SettingsController> {
                               ? null
                               : authController.logout,
                         ),
-                      ),
+                      ] else ...<Widget>[
+                        const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Local music only'),
+                          subtitle: Text(
+                            'Profiles, chat, followers, and people search stay disabled while offline mode is active.',
+                          ),
+                          trailing: Icon(Icons.offline_bolt_rounded),
+                        ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Enable online mode'),
+                          subtitle: const Text(
+                            'Go back to the sign-in flow for account and social features.',
+                          ),
+                          trailing: const Icon(Icons.login_rounded),
+                          onTap: () async {
+                            await appController.setAppMode(AppMode.online);
+                            Get.offAllNamed(AppPages.splash);
+                          },
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -211,8 +239,8 @@ class SettingsScreen extends GetView<SettingsController> {
                   ),
                 ),
               ],
-            ),
-          ),
+            );
+          }),
         ),
       ),
     );
