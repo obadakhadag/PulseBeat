@@ -11,6 +11,9 @@ import '../routes/app_pages.dart';
 import 'global_mini_player.dart';
 import 'main_section_scaffold.dart';
 
+const Duration _miniPlayerSlideDuration = Duration(milliseconds: 250);
+const Duration _miniPlayerFadeDuration = Duration(milliseconds: 200);
+
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child});
 
@@ -144,29 +147,41 @@ class _GlobalMiniPlayerOverlay extends StatelessWidget {
     return Obx(() {
       final SongModel? currentSong = playerController.currentSong.value;
       final String currentRoute = shellController.currentRoute.value;
+      final bool shouldShowMiniPlayer =
+          currentSong != null &&
+          shouldShowGlobalMiniPlayerOnRoute(currentRoute);
 
-      if (currentSong == null || !_shouldShowMiniPlayer(currentRoute)) {
+      if (currentSong == null) {
         return const SizedBox.shrink();
       }
 
-      return Positioned(
+      return AnimatedPositioned(
+        duration: _miniPlayerSlideDuration,
+        curve: Curves.easeOutCubic,
         left: 16,
         right: 16,
         bottom: _miniPlayerBottomInset(context, currentRoute),
-        child: GlobalMiniPlayer(
-          song: currentSong,
-          controller: playerController,
-          onOpen: () => Get.toNamed(AppPages.player),
+        child: IgnorePointer(
+          ignoring: !shouldShowMiniPlayer,
+          child: AnimatedSlide(
+            duration: _miniPlayerSlideDuration,
+            curve: Curves.easeOutCubic,
+            offset: shouldShowMiniPlayer ? Offset.zero : const Offset(0, 1),
+            child: AnimatedOpacity(
+              duration: _miniPlayerFadeDuration,
+              curve: Curves.easeOut,
+              opacity: shouldShowMiniPlayer ? 1 : 0,
+              child: GlobalMiniPlayer(
+                song: currentSong,
+                controller: playerController,
+                onOpen: () => Get.toNamed(AppPages.player),
+              ),
+            ),
+          ),
         ),
       );
     });
   }
-}
-
-bool _shouldShowMiniPlayer(String route) {
-  return route != AppPages.player &&
-      route != AppPages.login &&
-      route != AppPages.splash;
 }
 
 double _miniPlayerBottomInset(BuildContext context, String route) {

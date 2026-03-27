@@ -3,6 +3,21 @@ import 'package:get/get.dart';
 
 import '../routes/app_pages.dart';
 
+String normalizeAppRoute(String? route) => route?.trim() ?? '';
+
+bool isHomeRoute(String? route) {
+  return normalizeAppRoute(route) == AppPages.home;
+}
+
+bool shouldShowGlobalMiniPlayerOnRoute(String? route) {
+  final String normalizedRoute = normalizeAppRoute(route);
+  return normalizedRoute.isNotEmpty &&
+      !isHomeRoute(normalizedRoute) &&
+      normalizedRoute != AppPages.player &&
+      normalizedRoute != AppPages.login &&
+      normalizedRoute != AppPages.splash;
+}
+
 class AppShellController extends GetxController {
   final RxString currentRoute = AppPages.splash.obs;
 

@@ -49,10 +49,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Obx(() {
       final double contentBottomInset = MainSectionScaffold.bodyBottomInset(
-        withMiniPlayer: true,
+        withMiniPlayer: false,
       );
       final double fabBottom = MainSectionScaffold.bodyBottomInset(
-        withMiniPlayer: true,
+        withMiniPlayer: false,
       );
 
       return Scaffold(
