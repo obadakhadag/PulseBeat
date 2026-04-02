@@ -9,7 +9,9 @@ import '../routes/app_pages.dart';
 import '../widgets/main_section_scaffold.dart';
 
 class FavoriteSongsPage extends GetView<HomeController> {
-  const FavoriteSongsPage({super.key});
+  const FavoriteSongsPage({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   List<SongModel> _favoriteSongs(HomeController controller) {
     return controller.songs
@@ -19,11 +21,10 @@ class FavoriteSongsPage extends GetView<HomeController> {
 
   @override
   Widget build(BuildContext context) {
-    controller.ensureInitialLibraryLoad();
-
     return Scaffold(
       body: MainSectionScaffold(
         currentRoute: AppPages.favoriteSongs,
+        showBottomNav: showBottomNav,
         body: SafeArea(
           bottom: false,
           child: Obx(() {

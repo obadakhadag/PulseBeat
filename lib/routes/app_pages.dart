@@ -1,16 +1,13 @@
 import 'package:get/get.dart';
 
-import '../pages/chat_list_page.dart';
 import '../core/bindings/app_bindings.dart';
 import '../pages/chat_page.dart';
-import '../pages/dashboard_page.dart';
-import '../pages/favorite_songs_page.dart';
 import '../pages/follow_requests_page.dart';
+import '../pages/main_tabs_page.dart';
 import '../pages/profile_page.dart';
 import '../pages/search_page.dart';
 import '../pages/user_profile_page.dart';
 import '../views/auth/login_screen.dart';
-import '../views/home/home_screen.dart';
 import '../views/player/player_screen.dart';
 import '../views/settings/settings_screen.dart';
 import '../views/splash/splash_screen.dart';
@@ -47,7 +44,7 @@ class AppPages {
     GetPage<dynamic>(name: login, page: () => const LoginScreen()),
     GetPage<dynamic>(
       name: home,
-      page: () => const HomeScreen(),
+      page: () => const MainTabsPage(initialRoute: home),
       transition: Transition.fadeIn,
       transitionDuration: _pageTransitionDuration,
     ),
@@ -98,7 +95,7 @@ class AppPages {
       page: () => const OnlineOnlyGate(
         title: 'Chats are unavailable offline',
         message: 'Sign in to see your conversations and message other users.',
-        child: ChatListPage(),
+        child: MainTabsPage(initialRoute: chatList),
       ),
       transition: Transition.fadeIn,
       transitionDuration: _pageTransitionDuration,
@@ -115,7 +112,7 @@ class AppPages {
     ),
     GetPage<dynamic>(
       name: dashboard,
-      page: () => const DashboardPage(),
+      page: () => const MainTabsPage(initialRoute: dashboard),
       transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),
@@ -131,7 +128,7 @@ class AppPages {
     ),
     GetPage<dynamic>(
       name: favoriteSongs,
-      page: () => const FavoriteSongsPage(),
+      page: () => const MainTabsPage(initialRoute: favoriteSongs),
       transition: Transition.rightToLeftWithFade,
       transitionDuration: _pageTransitionDuration,
     ),

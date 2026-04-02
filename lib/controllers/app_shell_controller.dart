@@ -9,6 +9,14 @@ bool isHomeRoute(String? route) {
   return normalizeAppRoute(route) == AppPages.home;
 }
 
+bool isMainSectionRoute(String? route) {
+  final String normalizedRoute = normalizeAppRoute(route);
+  return normalizedRoute == AppPages.home ||
+      normalizedRoute == AppPages.favoriteSongs ||
+      normalizedRoute == AppPages.dashboard ||
+      normalizedRoute == AppPages.chatList;
+}
+
 bool shouldShowGlobalMiniPlayerOnRoute(String? route) {
   final String normalizedRoute = normalizeAppRoute(route);
   return normalizedRoute.isNotEmpty &&
@@ -23,11 +31,34 @@ class AppShellController extends GetxController {
 
   bool _routeSyncQueued = false;
   String? _pendingRouteName;
+  String? _activeMainSectionRoute;
+
+  void syncMainSectionRouteAfterBuild(String routeName) {
+    final String normalizedRoute = normalizeAppRoute(routeName);
+    if (!isMainSectionRoute(normalizedRoute)) {
+      return;
+    }
+
+    _activeMainSectionRoute = normalizedRoute;
+    queueRouteSync(normalizedRoute);
+  }
+
+  void setMainSectionRoute(String routeName) {
+    final String normalizedRoute = normalizeAppRoute(routeName);
+    if (!isMainSectionRoute(normalizedRoute)) {
+      return;
+    }
+
+    _activeMainSectionRoute = normalizedRoute;
+    if (currentRoute.value != normalizedRoute) {
+      currentRoute.value = normalizedRoute;
+    }
+  }
 
   void queueRouteSync([String? routeName]) {
     final String trimmedRoute = routeName?.trim() ?? '';
     if (trimmedRoute.isNotEmpty) {
-      _pendingRouteName = trimmedRoute;
+      _pendingRouteName = _resolveTrackedRoute(trimmedRoute);
     }
 
     if (_routeSyncQueued) {
@@ -38,9 +69,9 @@ class AppShellController extends GetxController {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _routeSyncQueued = false;
 
-      final String fallbackRoute = Get.currentRoute.trim();
+      final String fallbackRoute = _resolveTrackedRoute(Get.currentRoute);
       final String nextRoute = (_pendingRouteName?.trim().isNotEmpty ?? false)
-          ? _pendingRouteName!.trim()
+          ? _resolveTrackedRoute(_pendingRouteName)
           : fallbackRoute;
 
       _pendingRouteName = null;
@@ -51,6 +82,16 @@ class AppShellController extends GetxController {
 
       currentRoute.value = nextRoute;
     });
+  }
+
+  String _resolveTrackedRoute(String? routeName) {
+    final String normalizedRoute = normalizeAppRoute(routeName);
+    if ((_activeMainSectionRoute?.isNotEmpty ?? false) &&
+        isMainSectionRoute(normalizedRoute)) {
+      return _activeMainSectionRoute!;
+    }
+
+    return normalizedRoute;
   }
 }
 

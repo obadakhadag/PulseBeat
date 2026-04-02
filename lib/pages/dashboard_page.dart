@@ -9,7 +9,9 @@ import '../widgets/main_section_scaffold.dart';
 import '../widgets/song_artwork.dart';
 
 class DashboardPage extends GetView<HomeController> {
-  const DashboardPage({super.key});
+  const DashboardPage({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   Future<void> _refreshLibrary() async {
     await controller.loadLibrary(forceRefresh: true);
@@ -18,11 +20,10 @@ class DashboardPage extends GetView<HomeController> {
 
   @override
   Widget build(BuildContext context) {
-    controller.ensureInitialLibraryLoad();
-
     return Scaffold(
       body: MainSectionScaffold(
         currentRoute: AppPages.dashboard,
+        showBottomNav: showBottomNav,
         body: SafeArea(
           bottom: false,
           child: RefreshIndicator(

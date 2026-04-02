@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../controllers/auth_controller.dart';
+import '../routes/app_pages.dart';
 import '../widgets/app_user_avatar.dart';
 import '../widgets/music_page_background.dart';
 import 'followers_following_list_page.dart';
@@ -126,6 +127,11 @@ class ProfilePage extends GetView<AuthController> {
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w800),
                         ),
+                      ),
+                      IconButton(
+                        onPressed: () => Get.toNamed(AppPages.search),
+                        tooltip: 'Search'.tr,
+                        icon: const Icon(Icons.person_search_rounded),
                       ),
                       Obx(
                         () => IconButton(

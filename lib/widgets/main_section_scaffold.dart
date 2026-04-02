@@ -17,6 +17,7 @@ class MainSectionScaffold extends StatelessWidget {
     required this.body,
     this.baseColor,
     this.overlays = const <Widget>[],
+    this.showBottomNav = true,
     this.floatingActionButton,
     this.floatingActionButtonLocation,
   });
@@ -25,6 +26,7 @@ class MainSectionScaffold extends StatelessWidget {
   final Widget body;
   final Color? baseColor;
   final List<Widget> overlays;
+  final bool showBottomNav;
   final Widget? floatingActionButton;
   final FloatingActionButtonLocation? floatingActionButtonLocation;
 
@@ -47,10 +49,11 @@ class MainSectionScaffold extends StatelessWidget {
   }
 
   bool get _showNav {
-    return currentRoute == AppPages.home ||
-        currentRoute == AppPages.favoriteSongs ||
-        currentRoute == AppPages.dashboard ||
-        currentRoute == AppPages.chatList;
+    return showBottomNav &&
+        (currentRoute == AppPages.home ||
+            currentRoute == AppPages.favoriteSongs ||
+            currentRoute == AppPages.dashboard ||
+            currentRoute == AppPages.chatList);
   }
 
   @override

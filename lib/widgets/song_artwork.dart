@@ -68,6 +68,7 @@ class SongArtwork extends StatelessWidget {
         height: resolvedHeight,
         fit: fit,
         filterQuality: filterQuality,
+        gaplessPlayback: true,
         errorBuilder: (_, __, ___) => fallback,
       );
     }
@@ -83,7 +84,7 @@ class SongArtwork extends StatelessWidget {
       type: audio_query.ArtworkType.AUDIO,
       quality: quality,
       size: size,
-      keepOldArtwork: false,
+      keepOldArtwork: true,
       artworkQuality: filterQuality,
       artworkHeight: resolvedHeight,
       artworkWidth: resolvedWidth,

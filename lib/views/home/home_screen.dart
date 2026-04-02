@@ -14,7 +14,9 @@ import 'widgets/home_search_section.dart';
 import 'widgets/sort_bottom_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -100,12 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              const Positioned(
-                left: kMainSectionFloatingInset,
-                right: kMainSectionFloatingInset,
-                bottom: kMainSectionFloatingNavBottom,
-                child: HomeFloatingNavBar(),
-              ),
+              if (widget.showBottomNav)
+                const Positioned(
+                  left: kMainSectionFloatingInset,
+                  right: kMainSectionFloatingInset,
+                  bottom: kMainSectionFloatingNavBottom,
+                  child: HomeFloatingNavBar(),
+                ),
             ],
           ),
         ),

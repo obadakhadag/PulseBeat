@@ -9,7 +9,9 @@ import '../widgets/main_section_scaffold.dart';
 import '../widgets/music_page_background.dart';
 
 class ChatListPage extends StatelessWidget {
-  const ChatListPage({super.key});
+  const ChatListPage({super.key, this.showBottomNav = true});
+
+  final bool showBottomNav;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +29,7 @@ class ChatListPage extends StatelessWidget {
     return Scaffold(
       body: MainSectionScaffold(
         currentRoute: AppPages.chatList,
+        showBottomNav: showBottomNav,
         body: SafeArea(
           bottom: false,
           child: Column(
