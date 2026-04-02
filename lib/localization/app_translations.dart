@@ -47,6 +47,10 @@ class AppTranslations extends Translations {
       'Pause': 'Pause',
       'Buffering': 'Buffering',
       'Paused': 'Paused',
+      'Press again to exit': 'Press again to exit',
+      'Exit App': 'Exit App',
+      'Are you sure you want to exit?': 'Are you sure you want to exit?',
+      'Exit': 'Exit',
       'Library refreshed': 'Library refreshed',
       'Scan your device library first.': 'Scan your device library first.',
       'Unknown Artist': 'Unknown Artist',
@@ -139,6 +143,11 @@ class AppTranslations extends Translations {
       'Type a message...': 'Type a message...',
       'No songs available.': 'No songs available.',
       'Song saved to your library': 'Song saved to your library',
+      'Saved to PulseBeat folder': 'Saved to PulseBeat folder',
+      'Allow storage access to save songs in the PulseBeat folder.':
+          'Allow storage access to save songs in the PulseBeat folder.',
+      'Could not create the PulseBeat folder. Please allow storage access.':
+          'Could not create the PulseBeat folder. Please allow storage access.',
       'Failed to save song.': 'Failed to save song.',
       'Failed to send message.': 'Failed to send message.',
       'Failed to send song.': 'Failed to send song.',
@@ -462,6 +471,15 @@ class AppTranslations extends Translations {
           'مقاطع بلا بيانات عربية أو إنجليزية واضحة.',
       'No songs in this section.': 'لا توجد أغان في هذا القسم.',
       'Back': 'رجوع',
+      'Press again to exit': 'اضغط مرة أخرى للخروج',
+      'Exit App': 'الخروج من التطبيق',
+      'Are you sure you want to exit?': 'هل أنت متأكد أنك تريد الخروج؟',
+      'Exit': 'خروج',
+      'Saved to PulseBeat folder': 'تم الحفظ في مجلد PulseBeat',
+      'Allow storage access to save songs in the PulseBeat folder.':
+          'اسمح بالوصول إلى التخزين لحفظ الأغاني في مجلد PulseBeat.',
+      'Could not create the PulseBeat folder. Please allow storage access.':
+          'تعذر إنشاء مجلد PulseBeat. يرجى السماح بالوصول إلى التخزين.',
     },
   };
 }

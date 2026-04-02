@@ -225,13 +225,8 @@ class HomeController extends GetxController {
   List<SongModel> get featuredSongs =>
       visibleSongs.take(5).toList(growable: false);
 
-  List<SongModel> get downloadedSongs => songs
-      .where(
-        (SongModel song) => song.normalizedFilePath.toLowerCase().contains(
-          '/${AppConstants.downloadedSongsFolder.toLowerCase()}/',
-        ),
-      )
-      .toList(growable: false);
+  List<SongModel> get downloadedSongs =>
+      songs.where(_isDownloadedSong).toList(growable: false);
 
   List<SongModel> get recentlyPlayedSongs => recentIds
       .map(findSongById)
@@ -604,6 +599,16 @@ class HomeController extends GetxController {
     } catch (_) {
       // Keep local library loading resilient even if cloud sync is unavailable.
     }
+  }
+
+  bool _isDownloadedSong(SongModel song) {
+    final String normalizedPath = song.normalizedFilePath.toLowerCase();
+    return normalizedPath.contains(
+          '/${AppConstants.downloadedSongsFolder.toLowerCase()}/',
+        ) ||
+        normalizedPath.contains(
+          '/${AppConstants.legacyDownloadedSongsFolder.toLowerCase()}/',
+        );
   }
 
   bool _hasSameSongs(List<SongModel> current, List<SongModel> next) {

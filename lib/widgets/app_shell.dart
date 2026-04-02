@@ -13,6 +13,7 @@ import 'main_section_scaffold.dart';
 
 const Duration _miniPlayerSlideDuration = Duration(milliseconds: 250);
 const Duration _miniPlayerFadeDuration = Duration(milliseconds: 200);
+const Duration _exitConfirmationWindow = Duration(seconds: 2);
 
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child});
@@ -33,35 +34,129 @@ class AppShell extends StatelessWidget {
   }
 }
 
-class _AppShellBackHandler extends StatelessWidget {
+class _AppShellBackHandler extends StatefulWidget {
   const _AppShellBackHandler({required this.child});
 
   final Widget child;
 
   @override
+  State<_AppShellBackHandler> createState() => _AppShellBackHandlerState();
+}
+
+class _AppShellBackHandlerState extends State<_AppShellBackHandler> {
+  DateTime? _lastBackPressedAt;
+  String? _lastBackPromptRoute;
+  bool _isExitDialogVisible = false;
+
+  @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? result) async {
-        if (didPop) {
-          return;
-        }
-
-        final NavigatorState? navigator = Get.key.currentState;
-        final bool handledByNavigator = await navigator?.maybePop() ?? false;
-        if (handledByNavigator) {
-          return;
-        }
-
-        final bool shouldExit = await _showExitDialog();
-        if (!shouldExit) {
-          return;
-        }
-
-        await SystemNavigator.pop();
-      },
-      child: child,
+      onPopInvokedWithResult: _handlePopInvoked,
+      child: widget.child,
     );
+  }
+
+  Future<void> _handlePopInvoked(bool didPop, Object? result) async {
+    if (didPop) {
+      _clearExitPromptState();
+      return;
+    }
+
+    final NavigatorState? navigator = Get.key.currentState;
+    final bool handledByNavigator = await navigator?.maybePop() ?? false;
+    if (handledByNavigator) {
+      _clearExitPromptState();
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    final String currentRoute = _resolveCurrentRouteName();
+    final DateTime? lastBackPressedAt = _lastBackPressedAt;
+    final bool shouldShowExitDialog =
+        lastBackPressedAt != null &&
+        _lastBackPromptRoute == currentRoute &&
+        now.difference(lastBackPressedAt) <= _exitConfirmationWindow;
+
+    if (!shouldShowExitDialog) {
+      _lastBackPressedAt = now;
+      _lastBackPromptRoute = currentRoute;
+      _showExitPromptSnackBar();
+      return;
+    }
+
+    if (_isExitDialogVisible) {
+      return;
+    }
+
+    _isExitDialogVisible = true;
+    final bool shouldExit = await _showExitDialog();
+    _isExitDialogVisible = false;
+    _clearExitPromptState();
+
+    if (!shouldExit) {
+      return;
+    }
+
+    await SystemNavigator.pop();
+  }
+
+  void _clearExitPromptState() {
+    _lastBackPressedAt = null;
+    _lastBackPromptRoute = null;
+  }
+
+  String _resolveCurrentRouteName() {
+    if (Get.isRegistered<AppShellController>()) {
+      return normalizeAppRoute(
+        Get.find<AppShellController>().currentRoute.value,
+      );
+    }
+
+    return normalizeAppRoute(Get.currentRoute);
+  }
+
+  void _showExitPromptSnackBar() {
+    final ScaffoldMessengerState? messenger = ScaffoldMessenger.maybeOf(
+      context,
+    );
+    if (messenger == null) {
+      Get.rawSnackbar(
+        message: 'Press again to exit'.tr,
+        duration: _exitConfirmationWindow,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          duration: _exitConfirmationWindow,
+          margin: EdgeInsets.fromLTRB(
+            16,
+            0,
+            16,
+            _exitSnackBarBottomInset(context),
+          ),
+          elevation: 0,
+          backgroundColor: colors.inverseSurface.withValues(alpha: 0.94),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          content: Text(
+            'Press again to exit'.tr,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.onInverseSurface,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
   }
 
   Future<bool> _showExitDialog() async {
@@ -104,7 +199,7 @@ class _AppShellBackHandler extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Exit App',
+                  'Exit App'.tr,
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -113,7 +208,7 @@ class _AppShellBackHandler extends StatelessWidget {
             ],
           ),
           content: Text(
-            'Are you sure you want to exit?',
+            'Are you sure you want to exit?'.tr,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colors.onSurface.withValues(alpha: 0.72),
             ),
@@ -121,11 +216,11 @@ class _AppShellBackHandler extends StatelessWidget {
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
+              child: Text('Cancel'.tr),
             ),
             FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Exit'),
+              child: Text('Exit'.tr),
             ),
           ],
         );
@@ -199,6 +294,29 @@ double _miniPlayerBottomInset(BuildContext context, String route) {
   }
 
   return math.max(16, mediaQuery.viewPadding.bottom + 12);
+}
+
+double _exitSnackBarBottomInset(BuildContext context) {
+  final String route = Get.isRegistered<AppShellController>()
+      ? normalizeAppRoute(Get.find<AppShellController>().currentRoute.value)
+      : normalizeAppRoute(Get.currentRoute);
+
+  final bool hasVisibleMiniPlayer =
+      Get.isRegistered<PlayerController>() &&
+      Get.find<PlayerController>().currentSong.value != null &&
+      shouldShowGlobalMiniPlayerOnRoute(route);
+
+  if (hasVisibleMiniPlayer) {
+    return _miniPlayerBottomInset(context, route) +
+        kGlobalMiniPlayerHeight +
+        12;
+  }
+
+  if (_isMainSectionRoute(route)) {
+    return kMainSectionFloatingNavBottom + kMainSectionFloatingNavHeight + 16;
+  }
+
+  return math.max(24, MediaQuery.of(context).viewPadding.bottom + 20);
 }
 
 bool _isMainSectionRoute(String route) {

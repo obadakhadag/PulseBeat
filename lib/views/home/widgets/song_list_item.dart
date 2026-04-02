@@ -32,24 +32,24 @@ class SongListItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(24),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: <Widget>[
                 SongArtwork(
                   songId: song.artworkId,
                   artworkUri: song.artworkUri,
-                  width: 66,
-                  height: 66,
-                  borderRadius: BorderRadius.circular(20),
+                  width: 58,
+                  height: 58,
+                  borderRadius: BorderRadius.circular(18),
                   size: 128,
                   quality: 40,
                   fallback: SongArtworkPlaceholder(
-                    width: 66,
-                    height: 66,
-                    borderRadius: BorderRadius.circular(20),
+                    width: 58,
+                    height: 58,
+                    borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,7 +62,7 @@ class SongListItem extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
                         subtitle ??
                             '${song.artist.fallbackArtist} - ${song.album.ellipsis(18)}',
@@ -77,13 +77,21 @@ class SongListItem extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[
                     Obx(
                       () => IconButton(
                         visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 38,
+                          height: 38,
+                        ),
+                        style: IconButton.styleFrom(
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
                         onPressed: onFavoriteToggle,
                         icon: Icon(
                           controller.isFavorite(song.id)
@@ -97,19 +105,20 @@ class SongListItem extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     FilledButton(
                       onPressed: onTap,
                       style: FilledButton.styleFrom(
-                        minimumSize: const Size(44, 44),
-                        padding: const EdgeInsets.all(0),
+                        minimumSize: const Size(40, 40),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: EdgeInsets.zero,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
                       child: const Icon(Icons.play_arrow_rounded),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Text(
                       trailingLabel ?? song.duration.toClock(),
                       style: context.theme.textTheme.labelSmall?.copyWith(

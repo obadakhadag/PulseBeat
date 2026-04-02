@@ -18,6 +18,22 @@ class PermissionsService {
     );
   }
 
+  Future<bool> requestPulseBeatFolderAccess() async {
+    if (!Platform.isAndroid) {
+      return true;
+    }
+
+    final PermissionStatus manageStorageStatus = await Permission
+        .manageExternalStorage
+        .request();
+    if (manageStorageStatus.isGranted) {
+      return true;
+    }
+
+    final PermissionStatus storageStatus = await Permission.storage.request();
+    return storageStatus.isGranted || storageStatus.isLimited;
+  }
+
   Future<bool> isAudioAccessGranted() async {
     if (!Platform.isAndroid) {
       return true;

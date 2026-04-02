@@ -13,7 +13,10 @@ class AppConstants {
   static const String sortKey = 'library_sort';
   static const String groupKey = 'library_group';
   static const String downloadedSongsKey = 'downloaded_songs';
-  static const String downloadedSongsFolder = 'downloaded_songs';
+  static const String downloadedSongsFolder = 'PulseBeat';
+  static const String legacyDownloadedSongsFolder = 'downloaded_songs';
+  static const String androidDownloadedSongsPath =
+      '/storage/emulated/0/PulseBeat';
   static const String appModeKey = 'app_mode';
   static const String cachedLibrarySongIdsKey = 'cached_library_song_ids';
   static const String lastLibrarySyncSignatureKey =

@@ -16,6 +16,7 @@ import '../controllers/home_controller.dart';
 import '../controllers/player_controller.dart';
 import '../core/constants/app_constants.dart';
 import '../data/models/song_model.dart';
+import '../services/permissions_service.dart';
 import '../services/storage_service.dart';
 import '../services/supabase_debug_service.dart';
 import '../widgets/app_user_avatar.dart';
@@ -71,6 +72,7 @@ class _AnimatedChatMessage extends StatelessWidget {
 class _ChatPageState extends State<ChatPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final HomeController _homeController = Get.find<HomeController>();
+  final PermissionsService _permissionsService = Get.find<PermissionsService>();
   final PlayerController _playerController = Get.find<PlayerController>();
   final StorageService _storageService = Get.find<StorageService>();
   final audio_query.OnAudioQuery _audioQuery = audio_query.OnAudioQuery();
@@ -262,15 +264,42 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<Directory> _ensureDownloadedSongsDirectory() async {
-    final Directory documentsDirectory =
-        await getApplicationDocumentsDirectory();
-    final Directory downloadDirectory = Directory(
-      '${documentsDirectory.path}${Platform.pathSeparator}${AppConstants.downloadedSongsFolder}',
-    );
-    if (!await downloadDirectory.exists()) {
-      await downloadDirectory.create(recursive: true);
+    late final Directory downloadDirectory;
+    if (Platform.isAndroid) {
+      final bool hasFolderAccess = await _permissionsService
+          .requestPulseBeatFolderAccess();
+      if (!hasFolderAccess) {
+        throw StateError(
+          'Allow storage access to save songs in the PulseBeat folder.'.tr,
+        );
+      }
+      downloadDirectory = Directory(AppConstants.androidDownloadedSongsPath);
+    } else {
+      final Directory documentsDirectory =
+          await getApplicationDocumentsDirectory();
+      downloadDirectory = Directory(
+        '${documentsDirectory.path}${Platform.pathSeparator}${AppConstants.downloadedSongsFolder}',
+      );
+    }
+
+    try {
+      if (!await downloadDirectory.exists()) {
+        await downloadDirectory.create(recursive: true);
+      }
+    } on FileSystemException {
+      throw StateError(
+        'Could not create the PulseBeat folder. Please allow storage access.'
+            .tr,
+      );
     }
     return downloadDirectory;
+  }
+
+  bool _isPulseBeatDownloadPath(String filePath) {
+    return filePath
+        .replaceAll('\\', '/')
+        .toLowerCase()
+        .contains('/${AppConstants.downloadedSongsFolder.toLowerCase()}/');
   }
 
   String _resolveSongFileExtension({
@@ -322,7 +351,7 @@ class _ChatPageState extends State<ChatPage> {
     while (true) {
       final String fileName = suffix == 0
           ? '$safeBaseName$extension'
-          : '${safeBaseName}_$suffix$extension';
+          : '$safeBaseName ($suffix)$extension';
       final String filePath =
           '${directory.path}${Platform.pathSeparator}$fileName';
       if (!await File(filePath).exists()) {
@@ -369,28 +398,34 @@ class _ChatPageState extends State<ChatPage> {
     final SongModel? existingSong = _storageService.getDownloadedSongBySource(
       sourceKey,
     );
+    String? existingLegacyPath;
     if (existingSong != null && existingSong.filePath.trim().isNotEmpty) {
-      final File existingFile = File(existingSong.filePath);
+      final String existingPath = existingSong.filePath.trim();
+      final File existingFile = File(existingPath);
       if (await existingFile.exists()) {
-        if (normalizedCoverUrl.isNotEmpty &&
-            (existingSong.artworkUri?.trim().isEmpty ?? true)) {
-          _storageService.saveDownloadedSong(
-            sourceKey: sourceKey,
-            song: existingSong.copyWith(artworkUri: normalizedCoverUrl),
-          );
+        if (!_isPulseBeatDownloadPath(existingPath)) {
+          existingLegacyPath = existingPath;
+        } else {
+          if (normalizedCoverUrl.isNotEmpty &&
+              (existingSong.artworkUri?.trim().isEmpty ?? true)) {
+            _storageService.saveDownloadedSong(
+              sourceKey: sourceKey,
+              song: existingSong.copyWith(artworkUri: normalizedCoverUrl),
+            );
+          }
+          _sharedAudioFileCache[cacheKey] = existingSong.filePath;
+          _sharedAudioFileCache[sourceKey] = existingSong.filePath;
+          await _homeController.loadLibrary(forceRefresh: true);
+          if (mounted && normalizedMessageId.isNotEmpty) {
+            setState(() {
+              _savingSongMessageIds.remove(normalizedMessageId);
+              _savedSongMessageIds.add(normalizedMessageId);
+              _songSaveErrors.remove(normalizedMessageId);
+            });
+          }
+          Get.snackbar('Done'.tr, 'Saved to PulseBeat folder'.tr);
+          return;
         }
-        _sharedAudioFileCache[cacheKey] = existingSong.filePath;
-        _sharedAudioFileCache[sourceKey] = existingSong.filePath;
-        await _homeController.loadLibrary(forceRefresh: true);
-        if (mounted && normalizedMessageId.isNotEmpty) {
-          setState(() {
-            _savingSongMessageIds.remove(normalizedMessageId);
-            _savedSongMessageIds.add(normalizedMessageId);
-            _songSaveErrors.remove(normalizedMessageId);
-          });
-        }
-        Get.snackbar('Done'.tr, 'Song saved to your library'.tr);
-        return;
       }
     }
 
@@ -413,6 +448,13 @@ class _ChatPageState extends State<ChatPage> {
       }
 
       final File outputFile = File(outputPath);
+      if (!await outputFile.exists() &&
+          (existingLegacyPath?.trim().isNotEmpty ?? false)) {
+        final File legacyFile = File(existingLegacyPath!.trim());
+        if (await legacyFile.exists()) {
+          await legacyFile.copy(outputPath);
+        }
+      }
       if (!await outputFile.exists()) {
         if (audioData.trim().isNotEmpty) {
           final String? decodedPath = await _decodeAudioToLocalFile(
@@ -481,7 +523,7 @@ class _ChatPageState extends State<ChatPage> {
           _songSaveErrors.remove(normalizedMessageId);
         });
       }
-      Get.snackbar('Done'.tr, 'Song saved to your library'.tr);
+      Get.snackbar('Done'.tr, 'Saved to PulseBeat folder'.tr);
     } on StateError catch (error) {
       if (mounted && normalizedMessageId.isNotEmpty) {
         setState(() {
@@ -825,11 +867,17 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   String _sanitizeFileName(String value) {
-    final String sanitized = value.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    if (sanitized.trim().isNotEmpty) {
+    final String sanitized = value
+        .replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .replaceAll(RegExp(r'^\.+'), '')
+        .replaceAll(RegExp(r'\.+$'), '')
+        .trim();
+    if (sanitized.isNotEmpty) {
       return sanitized;
     }
-    return 'shared_song.mp3';
+    return 'shared_song';
   }
 
   Future<String?> _decodeAudioToLocalFile({
@@ -1929,7 +1977,7 @@ class _ChatPageState extends State<ChatPage> {
         if (!isMine && isSaveCompleted) ...<Widget>[
           const SizedBox(height: 8),
           Text(
-            'Song saved to your library'.tr,
+            'Saved to PulseBeat folder'.tr,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               color: messageTextColor.withValues(alpha: 0.84),
               fontWeight: FontWeight.w600,
