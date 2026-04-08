@@ -91,6 +91,22 @@ class _ChatPageState extends State<ChatPage> {
   String? _activeChatId;
   String? _typingUserUid;
   Timer? _typingTimer;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+  _listeningSessionSubscription;
+  StreamSubscription<Duration>? _hostPositionSubscription;
+  Worker? _hostPlayingWorker;
+  String? _listeningSessionChatId;
+  String? _listeningSessionUserUid;
+  String? _hostedSessionId;
+  String? _hostedSessionChatId;
+  String? _hostedSessionCacheKey;
+  String? _hostedSessionAudioUrl;
+  int? _hostedSessionSongId;
+  String? _lastAppliedSessionSignature;
+  DateTime? _lastSessionWriteAt;
+  int? _lastPublishedPositionSeconds;
+  bool? _lastPublishedIsPlaying;
+  bool _isApplyingRemoteSession = false;
 
   static const List<String> _reactionOptions = <String>[
     '\u2764\uFE0F',
@@ -121,6 +137,8 @@ class _ChatPageState extends State<ChatPage> {
         ),
       );
     }
+    _listeningSessionSubscription?.cancel();
+    _stopHostingListeningSession(markInactive: true);
     _messageController.dispose();
     _messageFocusNode
       ..removeListener(_handleComposerFocusChanged)
@@ -176,9 +194,15 @@ class _ChatPageState extends State<ChatPage> {
 
     _isTyping = isTyping;
     try {
-      await _firestore.collection('chats').doc(chatId).update(<String, dynamic>{
-        'typing.$currentUserUid': isTyping,
-      });
+      await _firestore
+          .collection('chat_typing')
+          .doc(chatId)
+          .collection('users')
+          .doc(currentUserUid)
+          .set(<String, dynamic>{
+            'isTyping': isTyping,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
     } catch (_) {
       _isTyping = !isTyping;
     }
@@ -222,6 +246,310 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
+  void _syncListeningSessionContext({
+    required String chatId,
+    required String currentUserUid,
+  }) {
+    if (chatId.trim().isEmpty || currentUserUid.trim().isEmpty) {
+      return;
+    }
+    if (_listeningSessionChatId == chatId &&
+        _listeningSessionUserUid == currentUserUid) {
+      return;
+    }
+
+    _listeningSessionSubscription?.cancel();
+    _listeningSessionChatId = chatId;
+    _listeningSessionUserUid = currentUserUid;
+    _lastAppliedSessionSignature = null;
+    _listeningSessionSubscription = _firestore
+        .collection('listening_sessions')
+        .doc(chatId)
+        .snapshots()
+        .listen((DocumentSnapshot<Map<String, dynamic>> snapshot) {
+          unawaited(
+            _handleListeningSessionSnapshot(
+              snapshot: snapshot,
+              currentUserUid: currentUserUid,
+            ),
+          );
+        });
+  }
+
+  Future<void> _handleListeningSessionSnapshot({
+    required DocumentSnapshot<Map<String, dynamic>> snapshot,
+    required String currentUserUid,
+    bool force = false,
+  }) async {
+    if (!mounted || !snapshot.exists) {
+      return;
+    }
+
+    final Map<String, dynamic> data = Map<String, dynamic>.from(
+      snapshot.data() ?? <String, dynamic>{},
+    );
+    if (data['isActive'] != true) {
+      return;
+    }
+
+    final String hostId =
+        ((data['hostId'] as String?) ?? (data['hostUid'] as String?) ?? '')
+            .trim();
+    if (hostId.isEmpty || hostId == currentUserUid) {
+      return;
+    }
+
+    final String sessionId =
+        (data['sessionId'] as String?)?.trim().isNotEmpty == true
+        ? (data['sessionId'] as String).trim()
+        : snapshot.id;
+    final String title = (data['title'] as String?)?.trim() ?? '';
+    final String artist = (data['artist'] as String?)?.trim() ?? '';
+    final String songName = (data['songName'] as String?)?.trim() ?? '';
+    final String coverUrl = (data['coverUrl'] as String?)?.trim() ?? '';
+    final String songUrl = (data['songUrl'] as String?)?.trim() ?? '';
+    final String audioUrl = songUrl.isNotEmpty
+        ? songUrl
+        : (data['audioUrl'] as String?)?.trim() ?? '';
+    final String audioData = (data['audioData'] as String?)?.trim() ?? '';
+    final int songId = (data['songId'] as num?)?.toInt() ?? 0;
+    final int positionSeconds = (data['position'] as num?)?.round() ?? 0;
+    final bool shouldPlay = data['isPlaying'] == true;
+    final DateTime? updatedAt = _resolveMessageDateTime(data['updatedAt']);
+    final String signature =
+        '$sessionId|$songId|$audioUrl|${audioData.length}|'
+        '$positionSeconds|$shouldPlay|${updatedAt?.millisecondsSinceEpoch ?? 0}';
+
+    if (!force && signature == _lastAppliedSessionSignature) {
+      return;
+    }
+    _lastAppliedSessionSignature = signature;
+
+    await _applyListeningSessionData(
+      sessionId: sessionId,
+      songId: songId,
+      songTitle: title,
+      songArtist: artist,
+      songName: songName.isNotEmpty ? songName : title,
+      coverUrl: coverUrl,
+      audioUrl: audioUrl,
+      audioData: audioData,
+      positionSeconds: positionSeconds,
+      isPlaying: shouldPlay,
+      updatedAt: updatedAt,
+    );
+  }
+
+  Future<void> _applyListeningSessionData({
+    required String sessionId,
+    required int songId,
+    required String songTitle,
+    required String songArtist,
+    required String songName,
+    required String coverUrl,
+    required String audioUrl,
+    required String audioData,
+    required int positionSeconds,
+    required bool isPlaying,
+    required DateTime? updatedAt,
+  }) async {
+    final String cacheKey = 'session_$sessionId';
+    if (songId <= 0 && audioUrl.trim().isEmpty && audioData.trim().isEmpty) {
+      return;
+    }
+
+    _isApplyingRemoteSession = true;
+    try {
+      if (!_isCurrentChatSong(
+        cacheKey: cacheKey,
+        songId: songId,
+        audioUrl: audioUrl,
+      )) {
+        await _playSongForChat(
+          cacheKey: cacheKey,
+          songId: songId,
+          songTitle: songTitle,
+          songArtist: songArtist,
+          songName: songName,
+          coverUrl: coverUrl,
+          audioUrl: audioUrl,
+          audioData: audioData,
+          toggleIfCurrent: false,
+        );
+      }
+
+      if (!_isCurrentChatSong(
+        cacheKey: cacheKey,
+        songId: songId,
+        audioUrl: audioUrl,
+      )) {
+        return;
+      }
+
+      final Duration targetPosition = _resolveSessionPosition(
+        positionSeconds: positionSeconds,
+        isPlaying: isPlaying,
+        updatedAt: updatedAt,
+      );
+      final int positionDifferenceMs =
+          (_playerController.position.value.inMilliseconds -
+                  targetPosition.inMilliseconds)
+              .abs();
+      if (positionDifferenceMs > 2500) {
+        await _playerController.seek(targetPosition);
+      }
+
+      if (isPlaying && !_playerController.isPlaying.value) {
+        await _playerController.play();
+      } else if (!isPlaying && _playerController.isPlaying.value) {
+        await _playerController.pause();
+      }
+    } finally {
+      _isApplyingRemoteSession = false;
+    }
+  }
+
+  Duration _resolveSessionPosition({
+    required int positionSeconds,
+    required bool isPlaying,
+    required DateTime? updatedAt,
+  }) {
+    final DateTime? localUpdatedAt = updatedAt?.toLocal();
+    final int elapsedSeconds = isPlaying && localUpdatedAt != null
+        ? DateTime.now().difference(localUpdatedAt).inSeconds
+        : 0;
+    final int resolvedSeconds = (positionSeconds + elapsedSeconds)
+        .clamp(0, 604800)
+        .toInt();
+    return Duration(seconds: resolvedSeconds);
+  }
+
+  bool _isCurrentChatSong({
+    required String cacheKey,
+    required int songId,
+    required String audioUrl,
+  }) {
+    final SongModel? currentSong = _playerController.currentSong.value;
+    if (currentSong == null) {
+      return false;
+    }
+
+    final String trimmedAudioUrl = audioUrl.trim();
+    final String? cachedPath = _sharedAudioFileCache[cacheKey.trim()];
+    final String cachedUri = cachedPath == null || cachedPath.isEmpty
+        ? ''
+        : Uri.file(cachedPath).toString();
+
+    return (songId > 0 && currentSong.id == songId) ||
+        (trimmedAudioUrl.isNotEmpty && currentSong.uri == trimmedAudioUrl) ||
+        (cachedUri.isNotEmpty && currentSong.uri == cachedUri);
+  }
+
+  void _beginHostingListeningSession({
+    required String chatId,
+    required String sessionId,
+    required int songId,
+    required String audioUrl,
+  }) {
+    if (_hostedSessionId == sessionId && _hostedSessionChatId == chatId) {
+      _publishHostedSessionState(force: true);
+      return;
+    }
+
+    _stopHostingListeningSession(markInactive: false);
+    _hostedSessionId = sessionId;
+    _hostedSessionChatId = chatId;
+    _hostedSessionCacheKey = 'session_$sessionId';
+    _hostedSessionAudioUrl = audioUrl.trim();
+    _hostedSessionSongId = songId;
+    _lastSessionWriteAt = null;
+    _lastPublishedPositionSeconds = null;
+    _lastPublishedIsPlaying = null;
+    _hostPositionSubscription = _playerController.positionStream.listen((_) {
+      _publishHostedSessionState();
+    });
+    _hostPlayingWorker = ever<bool>(_playerController.isPlaying, (_) {
+      _publishHostedSessionState(force: true);
+    });
+    _publishHostedSessionState(force: true);
+  }
+
+  void _stopHostingListeningSession({required bool markInactive}) {
+    final String? sessionId = _hostedSessionId;
+    _hostPositionSubscription?.cancel();
+    _hostPositionSubscription = null;
+    _hostPlayingWorker?.dispose();
+    _hostPlayingWorker = null;
+    _hostedSessionId = null;
+    _hostedSessionChatId = null;
+    _hostedSessionCacheKey = null;
+    _hostedSessionAudioUrl = null;
+    _hostedSessionSongId = null;
+    _lastSessionWriteAt = null;
+    _lastPublishedPositionSeconds = null;
+    _lastPublishedIsPlaying = null;
+
+    if (markInactive && sessionId != null && sessionId.isNotEmpty) {
+      unawaited(
+        _firestore
+            .collection('listening_sessions')
+            .doc(sessionId)
+            .set(<String, dynamic>{
+              'isActive': false,
+              'isPlaying': false,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true)),
+      );
+    }
+  }
+
+  void _publishHostedSessionState({bool force = false}) {
+    final String? sessionId = _hostedSessionId;
+    if (sessionId == null || sessionId.isEmpty || _isApplyingRemoteSession) {
+      return;
+    }
+
+    final int hostedSongId = _hostedSessionSongId ?? 0;
+    if (!_isCurrentChatSong(
+      cacheKey: _hostedSessionCacheKey ?? 'session_$sessionId',
+      songId: hostedSongId,
+      audioUrl: _hostedSessionAudioUrl ?? '',
+    )) {
+      _stopHostingListeningSession(markInactive: true);
+      return;
+    }
+
+    final DateTime now = DateTime.now();
+    if (!force &&
+        _lastSessionWriteAt != null &&
+        now.difference(_lastSessionWriteAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+
+    final int positionSeconds = _playerController.position.value.inSeconds;
+    final bool isPlaying = _playerController.isPlaying.value;
+    if (!force &&
+        _lastPublishedPositionSeconds == positionSeconds &&
+        _lastPublishedIsPlaying == isPlaying) {
+      return;
+    }
+
+    _lastSessionWriteAt = now;
+    _lastPublishedPositionSeconds = positionSeconds;
+    _lastPublishedIsPlaying = isPlaying;
+
+    unawaited(
+      _firestore
+          .collection('listening_sessions')
+          .doc(sessionId)
+          .set(<String, dynamic>{
+            'position': positionSeconds,
+            'isPlaying': isPlaying,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true)),
+    );
+  }
+
   DateTime? _resolveMessageDateTime(dynamic rawValue) {
     if (rawValue is Timestamp) {
       return rawValue.toDate();
@@ -240,6 +568,29 @@ class _ChatPageState extends State<ChatPage> {
     return MaterialLocalizations.of(
       context,
     ).formatTimeOfDay(TimeOfDay.fromDateTime(value.toLocal()));
+  }
+
+  String _formatLastSeenLabel(BuildContext context, DateTime? value) {
+    if (value == null) {
+      return 'Offline';
+    }
+
+    final DateTime localValue = value.toLocal();
+    final DateTime now = DateTime.now();
+    final MaterialLocalizations localizations = MaterialLocalizations.of(
+      context,
+    );
+    final String timeLabel = localizations.formatTimeOfDay(
+      TimeOfDay.fromDateTime(localValue),
+    );
+
+    if (localValue.year == now.year &&
+        localValue.month == now.month &&
+        localValue.day == now.day) {
+      return 'Last seen: $timeLabel';
+    }
+
+    return 'Last seen: ${localizations.formatShortDate(localValue)} $timeLabel';
   }
 
   String _buildSharedSongSourceKey({
@@ -1246,8 +1597,19 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       final DocumentReference<Map<String, dynamic>> sessionRef = _firestore
-          .collection('shared_sessions')
-          .doc();
+          .collection('listening_sessions')
+          .doc(chatId);
+      await _playSongForChat(
+        cacheKey: 'session_${sessionRef.id}',
+        songId: resolvedSongId,
+        songTitle: title,
+        songArtist: artist,
+        songName: songName,
+        coverUrl: coverUrl,
+        audioUrl: trimmedAudioUrl,
+        audioData: trimmedAudioData,
+        toggleIfCurrent: false,
+      );
       await sessionRef.set(<String, dynamic>{
         'sessionId': sessionRef.id,
         'chatId': chatId,
@@ -1259,11 +1621,21 @@ class _ChatPageState extends State<ChatPage> {
         'songUrl': trimmedAudioUrl,
         'audioUrl': trimmedAudioUrl,
         'audioData': trimmedAudioData,
+        'hostId': currentUserUid,
         'hostUid': currentUserUid,
         'participants': <String>[currentUserUid],
         'isActive': true,
+        'isPlaying': _playerController.isPlaying.value,
+        'position': _playerController.position.value.inSeconds,
         'startedAt': FieldValue.serverTimestamp(),
-      });
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      _beginHostingListeningSession(
+        chatId: chatId,
+        sessionId: sessionRef.id,
+        songId: resolvedSongId,
+        audioUrl: trimmedAudioUrl,
+      );
       Get.snackbar('Listening session', 'Session started.');
     } catch (_) {
       Get.snackbar('Error', 'Failed to start listening session.');
@@ -1272,6 +1644,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _joinListeningSession({
     required String sessionId,
+    required String chatId,
     required String currentUserUid,
     required int songId,
     required String songTitle,
@@ -1286,22 +1659,31 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     try {
-      await _firestore.collection('shared_sessions').doc(sessionId).update(
-        <String, dynamic>{
-          'participants': FieldValue.arrayUnion(<String>[currentUserUid]),
-        },
-      );
-      await _playSongForChat(
-        cacheKey: 'session_$sessionId',
-        songId: songId,
-        songTitle: songTitle,
-        songArtist: songArtist,
-        songName: songName,
-        coverUrl: coverUrl,
-        audioUrl: audioUrl,
-        audioData: audioData,
-        toggleIfCurrent: false,
-      );
+      final DocumentSnapshot<Map<String, dynamic>> snapshot = await _firestore
+          .collection('listening_sessions')
+          .doc(chatId)
+          .get();
+      if (snapshot.exists) {
+        await _handleListeningSessionSnapshot(
+          snapshot: snapshot,
+          currentUserUid: currentUserUid,
+          force: true,
+        );
+      } else {
+        await _applyListeningSessionData(
+          sessionId: sessionId,
+          songId: songId,
+          songTitle: songTitle,
+          songArtist: songArtist,
+          songName: songName,
+          coverUrl: coverUrl,
+          audioUrl: audioUrl,
+          audioData: audioData,
+          positionSeconds: 0,
+          isPlaying: true,
+          updatedAt: null,
+        );
+      }
     } catch (_) {
       Get.snackbar('Error', 'Failed to join listening session.');
     }
@@ -1494,18 +1876,41 @@ class _ChatPageState extends State<ChatPage> {
             ? (userData['photoUrl'] as String).trim()
             : fallbackPhotoUrl;
 
+        final bool showOnlineStatus =
+            (userData['showOnlineStatus'] as bool?) ?? true;
+        final bool isOnline = showOnlineStatus && userData['isOnline'] == true;
+        final DateTime? lastSeen = showOnlineStatus
+            ? _resolveMessageDateTime(userData['lastSeen'])
+            : null;
+        final String fallbackStatus = fallbackUsername.isNotEmpty
+            ? '@$fallbackUsername'
+            : 'User';
+        final String statusLabel = showOnlineStatus
+            ? isOnline
+                  ? 'Online'
+                  : _formatLastSeenLabel(context, lastSeen)
+            : fallbackStatus;
+
         return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: _firestore.collection('chats').doc(chatId).snapshots(),
-          builder: (context, chatSnapshot) {
-            final Map<String, dynamic> chatData = Map<String, dynamic>.from(
-              chatSnapshot.data?.data() ?? <String, dynamic>{},
+          stream: _firestore
+              .collection('chat_typing')
+              .doc(chatId)
+              .collection('users')
+              .doc(otherUid)
+              .snapshots(),
+          builder: (context, typingSnapshot) {
+            final Map<String, dynamic> typingData = Map<String, dynamic>.from(
+              typingSnapshot.data?.data() ?? <String, dynamic>{},
             );
-            final Map<String, dynamic> typingMap = chatData['typing'] is Map
-                ? Map<String, dynamic>.from(
-                    chatData['typing'] as Map<dynamic, dynamic>,
-                  )
-                : <String, dynamic>{};
-            final bool isOtherUserTyping = typingMap[otherUid] == true;
+            final DateTime? typingUpdatedAt = _resolveMessageDateTime(
+              typingData['updatedAt'],
+            );
+            final bool isTypingFresh =
+                typingUpdatedAt == null ||
+                DateTime.now().difference(typingUpdatedAt.toLocal()).inSeconds <
+                    5;
+            final bool isOtherUserTyping =
+                typingData['isTyping'] == true && isTypingFresh;
 
             return InkWell(
               borderRadius: BorderRadius.circular(22),
@@ -1533,11 +1938,7 @@ class _ChatPageState extends State<ChatPage> {
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         Text(
-                          isOtherUserTyping
-                              ? 'Typing...'
-                              : fallbackUsername.isNotEmpty
-                              ? '@$fallbackUsername'
-                              : 'Online',
+                          isOtherUserTyping ? 'Typing...' : statusLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.labelSmall
@@ -2005,27 +2406,28 @@ class _ChatPageState extends State<ChatPage> {
     required String chatId,
     required String currentUserUid,
   }) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _firestore
-          .collection('shared_sessions')
-          .where('chatId', isEqualTo: chatId)
-          .where('isActive', isEqualTo: true)
-          .limit(1)
+          .collection('listening_sessions')
+          .doc(chatId)
           .snapshots(),
       builder: (context, snapshot) {
-        final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs =
-            snapshot.data?.docs ??
-            <QueryDocumentSnapshot<Map<String, dynamic>>>[];
-        if (docs.isEmpty) {
+        final DocumentSnapshot<Map<String, dynamic>>? doc = snapshot.data;
+        final Map<String, dynamic> data = Map<String, dynamic>.from(
+          doc?.data() ?? <String, dynamic>{},
+        );
+        if (doc == null || !doc.exists || data['isActive'] != true) {
           return const SizedBox.shrink();
         }
 
-        final QueryDocumentSnapshot<Map<String, dynamic>> doc = docs.first;
-        final Map<String, dynamic> data = doc.data();
         final String sessionId =
             (data['sessionId'] as String?)?.trim().isNotEmpty == true
             ? (data['sessionId'] as String).trim()
             : doc.id;
+        final String hostId =
+            ((data['hostId'] as String?) ?? (data['hostUid'] as String?) ?? '')
+                .trim();
+        final bool isHost = hostId == currentUserUid;
         final String title = (data['title'] as String?)?.trim() ?? '';
         final String artist = (data['artist'] as String?)?.trim() ?? '';
         final String songName = (data['songName'] as String?)?.trim() ?? '';
@@ -2085,10 +2487,12 @@ class _ChatPageState extends State<ChatPage> {
                 alignment: Alignment.centerLeft,
                 child: OutlinedButton(
                   onPressed:
-                      songId <= 0 && audioUrl.isEmpty && audioData.isEmpty
+                      isHost ||
+                          (songId <= 0 && audioUrl.isEmpty && audioData.isEmpty)
                       ? null
                       : () => _joinListeningSession(
                           sessionId: sessionId,
+                          chatId: chatId,
                           currentUserUid: currentUserUid,
                           songId: songId,
                           songTitle: title,
@@ -2098,7 +2502,7 @@ class _ChatPageState extends State<ChatPage> {
                           audioUrl: audioUrl,
                           audioData: audioData,
                         ),
-                  child: const Text('Join Listening'),
+                  child: Text(isHost ? 'Hosting' : 'Sync now'),
                 ),
               ),
             ],
@@ -2147,6 +2551,10 @@ class _ChatPageState extends State<ChatPage> {
 
     if (resolvedChatId.isNotEmpty && currentUserUid != null) {
       _syncTypingContext(
+        chatId: resolvedChatId,
+        currentUserUid: currentUserUid,
+      );
+      _syncListeningSessionContext(
         chatId: resolvedChatId,
         currentUserUid: currentUserUid,
       );

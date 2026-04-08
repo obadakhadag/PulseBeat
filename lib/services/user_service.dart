@@ -76,6 +76,43 @@ class UserService {
     await updateProfile(uid, <String, dynamic>{'isPrivate': isPrivate});
   }
 
+  Future<void> updateOnlineStatus({
+    required String uid,
+    required bool isOnline,
+  }) async {
+    final String normalizedUid = uid.trim();
+    if (normalizedUid.isEmpty) {
+      return;
+    }
+
+    await _usersCollection.doc(normalizedUid).set(<String, dynamic>{
+      'isOnline': isOnline,
+      'lastSeen': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> updateOnlineVisibility(bool showOnlineStatus) async {
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw StateError('No logged-in user found.');
+    }
+
+    await updateProfile(uid, <String, dynamic>{
+      'showOnlineStatus': showOnlineStatus,
+    });
+  }
+
+  Future<void> updateFollowingListVisibility(bool showFollowingList) async {
+    final String? uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      throw StateError('No logged-in user found.');
+    }
+
+    await updateProfile(uid, <String, dynamic>{
+      'showFollowingList': showFollowingList,
+    });
+  }
+
   Future<void> syncUserLibrary({
     required String uid,
     required Iterable<String> libraryIds,
@@ -202,6 +239,10 @@ class UserService {
       'authProvider': _resolvedAuthProvider(firebaseUser, existingProfile),
       'bio': existingProfile?.bio ?? '',
       'isPrivate': existingProfile?.isPrivate ?? false,
+      'isOnline': existingProfile?.isOnline ?? false,
+      'lastSeen': existingProfile?.lastSeen,
+      'showOnlineStatus': existingProfile?.showOnlineStatus ?? true,
+      'showFollowingList': existingProfile?.showFollowingList ?? true,
       'followersCount': existingProfile?.followersCount ?? 0,
       'followingCount': existingProfile?.followingCount ?? 0,
       'createdAt': existingProfile?.createdAt ?? FieldValue.serverTimestamp(),

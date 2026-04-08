@@ -39,7 +39,7 @@ class FloatingMusicNavBar extends StatelessWidget {
         const _NavItem(
           route: AppPages.dashboard,
           icon: Icons.dashboard_rounded,
-          label: 'Dashboard',
+          label: 'Insights',
         ),
         if (appController.isOnline)
           const _NavItem(

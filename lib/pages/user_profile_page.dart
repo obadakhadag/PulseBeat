@@ -146,6 +146,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
               final int followingCount =
                   (data['followingCount'] as num?)?.toInt() ?? 0;
               final bool isOwnProfile = _authController.uid == uid;
+              final bool showFollowingList =
+                  (data['showFollowingList'] as bool?) ?? true;
+              final bool canViewFollowLists = isOwnProfile || showFollowingList;
 
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -189,37 +192,60 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                 ),
                           ),
                           const SizedBox(height: 18),
-                          Row(
-                            children: <Widget>[
-                              Expanded(
-                                child: _CounterCard(
-                                  label: 'Followers'.tr,
-                                  value: followersCount,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) =>
-                                          FollowersListPage(profileUid: uid),
+                          if (canViewFollowLists)
+                            Row(
+                              children: <Widget>[
+                                Expanded(
+                                  child: _CounterCard(
+                                    label: 'Followers'.tr,
+                                    value: followersCount,
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            FollowersListPage(profileUid: uid),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _CounterCard(
-                                  label: 'Following'.tr,
-                                  value: followingCount,
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) =>
-                                          FollowingListPage(profileUid: uid),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _CounterCard(
+                                    label: 'Following'.tr,
+                                    value: followingCount,
+                                    onTap: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            FollowingListPage(profileUid: uid),
+                                      ),
                                     ),
                                   ),
                                 ),
+                              ],
+                            )
+                          else
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.04),
+                                borderRadius: BorderRadius.circular(18),
                               ),
-                            ],
-                          ),
+                              child: Text(
+                                'Follow lists are hidden.',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.70),
+                                    ),
+                              ),
+                            ),
                           if (!isOwnProfile) ...<Widget>[
                             const SizedBox(height: 16),
                             Obx(() {

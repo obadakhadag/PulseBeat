@@ -15,6 +15,10 @@ class UserModel {
     required this.createdAt,
     required this.updatedAt,
     required this.lastLogin,
+    this.isOnline = false,
+    this.lastSeen,
+    this.showOnlineStatus = true,
+    this.showFollowingList = true,
     this.librarySongIds = const <String>[],
   });
 
@@ -31,6 +35,10 @@ class UserModel {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? lastLogin;
+  final bool isOnline;
+  final DateTime? lastSeen;
+  final bool showOnlineStatus;
+  final bool showFollowingList;
   final List<String> librarySongIds;
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -48,6 +56,10 @@ class UserModel {
       createdAt: _toDateTime(map['createdAt']),
       updatedAt: _toDateTime(map['updatedAt']),
       lastLogin: _toDateTime(map['lastLogin']),
+      isOnline: (map['isOnline'] as bool?) ?? false,
+      lastSeen: _toDateTime(map['lastSeen']),
+      showOnlineStatus: (map['showOnlineStatus'] as bool?) ?? true,
+      showFollowingList: (map['showFollowingList'] as bool?) ?? true,
       librarySongIds: ((map['userLibrary'] as List<dynamic>?) ?? <dynamic>[])
           .whereType<String>()
           .map((String item) => item.trim())
@@ -71,6 +83,10 @@ class UserModel {
       'createdAt': createdAt,
       'updatedAt': updatedAt,
       'lastLogin': lastLogin,
+      'isOnline': isOnline,
+      'lastSeen': lastSeen,
+      'showOnlineStatus': showOnlineStatus,
+      'showFollowingList': showFollowingList,
       'userLibrary': librarySongIds,
     };
   }

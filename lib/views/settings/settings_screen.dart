@@ -155,6 +155,42 @@ class SettingsScreen extends GetView<SettingsController> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (isOnline) ...<Widget>[
+                  _Panel(
+                    title: 'Privacy Settings'.tr,
+                    child: Column(
+                      children: <Widget>[
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Show online status'.tr),
+                          subtitle: Text(
+                            'Allow people you chat with to see Online and Last seen.'
+                                .tr,
+                          ),
+                          value: authController!.showOnlineStatus,
+                          onChanged:
+                              authController.isUpdatingPresencePrivacy.value
+                              ? null
+                              : authController.updateShowOnlineStatus,
+                        ),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Show following list'.tr),
+                          subtitle: Text(
+                            'Allow other people to open your followers and following lists.'
+                                .tr,
+                          ),
+                          value: authController.showFollowingList,
+                          onChanged:
+                              authController.isUpdatingPresencePrivacy.value
+                              ? null
+                              : authController.updateShowFollowingList,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 _Panel(
                   title: isOnline ? 'Account'.tr : 'Offline mode',
                   child: Column(

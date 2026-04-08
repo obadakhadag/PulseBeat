@@ -5,10 +5,10 @@ class AppTheme {
   const AppTheme._();
 
   static const Color _white = Color(0xFFFFFFFF);
-  static const Color _lightBackground = Color(0xFFFFFFFF);
-  static const Color _lightCard = Color(0xFFF5F5F5);
-  static const Color _lightText = Color(0xFF000000);
-  static const Color _lightTextSecondary = Color(0xFF4A4A4A);
+  static const Color _lightBackground = Color(0xFFF5F5F5);
+  static const Color _lightCard = Color(0xFFFFFFFF);
+  static const Color _lightText = Color(0xFF202124);
+  static const Color _lightTextSecondary = Color(0xFF5F6368);
   static const Color _night = Color(0xFF1A1A1A);
   static const Color _nightCard = Color(0xFF232323);
   static const Color _nightCardSoft = Color(0xFF2D2D2D);
@@ -16,10 +16,10 @@ class AppTheme {
   static const Color _violet = Color(0xFF9F63FF);
   static const Color _orange = Color(0xFFFF964D);
   static const Color _pink = Color(0xFFFF5FA8);
-  static const Color _lightViolet = Color(0xFFB489FF);
-  static const Color _lightOrange = Color(0xFFFFB070);
-  static const Color _lightPink = Color(0xFFFF7FBC);
-  static const Color _lavender = Color(0xFFE6D7FF);
+  static const Color _lightViolet = Color(0xFF9E7AE6);
+  static const Color _lightOrange = Color(0xFFF39A55);
+  static const Color _lightPink = Color(0xFFE96FA8);
+  static const Color _lavender = Color(0xFFEDE3FF);
   static const Color _shadow = Color(0x4D000000);
 
   static ThemeData get lightTheme {

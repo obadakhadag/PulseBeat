@@ -186,7 +186,7 @@ class FavoriteSongsPage extends GetView<HomeController> {
                                               ),
                                               const SizedBox(height: 6),
                                               Text(
-                                                'This page reads the same favorite IDs used across Home and Dashboard.',
+                                                'This page reads the same favorite IDs used across Home and Insights.',
                                                 style: Theme.of(context)
                                                     .textTheme
                                                     .bodyMedium

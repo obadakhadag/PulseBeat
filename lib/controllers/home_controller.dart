@@ -91,9 +91,18 @@ class HomeController extends GetxController {
   final Rx<HomeSection> section = HomeSection.all.obs;
   final Rx<HomeBrowseCategory> browseCategory = HomeBrowseCategory.allSongs.obs;
   final RxList<LibraryEntry> libraryEntries = <LibraryEntry>[].obs;
+  final RxBool hideRecordings = false.obs;
   final RxBool showScrollToTop = false.obs;
   final ScrollController scrollController = ScrollController();
   bool _didRequestInitialLibraryLoad = false;
+
+  static const int _voiceRecordingDurationThresholdMs = 30000;
+  static final RegExp _voiceRecordingPathPattern = RegExp(
+    r'(^|[\/_\-\s.])rec(?:order|ording)?s?(?:[\/_\-\s.]|\d|$)',
+  );
+  static final RegExp _voiceRecordingMetadataPattern = RegExp(
+    r'(^|[\/_\-\s.])(?:record(?:ing|ed)?s?|rec(?:order|ording)?s?|voice(?:[\/_\-\s.]?(?:memo|note|recorder|recording))?)(?:[\/_\-\s.]|\d|$)',
+  );
 
   @override
   Future<void> onInit() async {
@@ -162,6 +171,7 @@ class HomeController extends GetxController {
   void setSection(HomeSection value) => section.value = value;
   void setBrowseCategory(HomeBrowseCategory value) =>
       browseCategory.value = value;
+  void setHideRecordings(bool value) => hideRecordings.value = value;
 
   void setSort(LibrarySort value) {
     sort.value = value;
@@ -175,6 +185,26 @@ class HomeController extends GetxController {
 
   bool isFavorite(int songId) => favoriteIds.contains(songId);
   int playCountFor(int songId) => _playerController.playCounts[songId] ?? 0;
+
+  bool isVoiceRecording(SongModel song) {
+    final bool hasShortDuration =
+        song.duration.inMilliseconds > 0 &&
+        song.duration.inMilliseconds < _voiceRecordingDurationThresholdMs;
+    final String normalizedPath = song.normalizedFilePath.toLowerCase();
+    final String metadataSource = <String>[
+      song.title,
+      song.album,
+      song.artist,
+    ].join(' ').toLowerCase();
+    final bool hasPathKeyword =
+        normalizedPath.contains('record') ||
+        normalizedPath.contains('voice') ||
+        _voiceRecordingPathPattern.hasMatch(normalizedPath);
+
+    return hasShortDuration ||
+        hasPathKeyword ||
+        _voiceRecordingMetadataPattern.hasMatch(metadataSource);
+  }
 
   String playCountLabel(int songId) {
     final count = playCountFor(songId);

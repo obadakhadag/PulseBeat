@@ -58,7 +58,7 @@ class DashboardPage extends GetView<HomeController> {
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                     sliver: SliverToBoxAdapter(
                       child: _DashboardHeroCard(
-                        title: 'Dashboard',
+                        title: 'Insights',
                         subtitle: controller.permissionGranted.value
                             ? 'Playback, favorites, saved tracks, and library totals at a glance.'
                             : 'Pull to refresh after granting audio access to complete your library insights.',
@@ -84,7 +84,7 @@ class DashboardPage extends GetView<HomeController> {
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: Text(
-                                    'Allow audio access so Dashboard can count artists, folders, and device tracks.',
+                                    'Allow audio access so Insights can count artists, folders, and device tracks.',
                                     style: Theme.of(
                                       context,
                                     ).textTheme.bodyMedium,
@@ -232,7 +232,7 @@ class DashboardPage extends GetView<HomeController> {
                                   'Songs you open from Home, Favorites, or search will show up here.',
                             )
                           : SizedBox(
-                              height: 156,
+                              height: 168,
                               child: ListView.separated(
                                 scrollDirection: Axis.horizontal,
                                 itemBuilder: (BuildContext context, int index) {
@@ -757,7 +757,6 @@ class _RecentSongCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 148,
-      height: 156,
       child: Card(
         child: InkWell(
           borderRadius: BorderRadius.circular(24),
@@ -765,6 +764,7 @@ class _RecentSongCard extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 SongArtwork(
@@ -801,7 +801,7 @@ class _RecentSongCard extends StatelessWidget {
                     ).colorScheme.onSurface.withValues(alpha: 0.66),
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(height: 6),
                 Text(
                   playCount == 0 ? 'Fresh' : '$playCount plays',
                   maxLines: 1,

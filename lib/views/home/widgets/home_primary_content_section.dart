@@ -56,7 +56,17 @@ class AllSongsContent extends StatelessWidget {
         );
       }
 
-      if (controller.visibleSongs.isEmpty) {
+      final List<SongModel> allSongs = controller.visibleSongs.toList(
+        growable: false,
+      );
+      final bool hideRecordings = controller.hideRecordings.value;
+      final List<SongModel> displayedSongs = hideRecordings
+          ? allSongs
+                .where((SongModel song) => !controller.isVoiceRecording(song))
+                .toList(growable: false)
+          : allSongs;
+
+      if (allSongs.isEmpty) {
         return _SingleCardSliver(
           child: _HomeEmptyStateCard(
             icon: Icons.queue_music_rounded,
@@ -77,34 +87,53 @@ class AllSongsContent extends StatelessWidget {
               child: _HomeContentHeader(
                 title: 'All Songs'.tr,
                 description: 'Search songs, artists, albums'.tr,
-                countLabel: controller.visibleSongs.length == 1
+                countLabel: displayedSongs.length == 1
                     ? '1 song'.tr
                     : '@count songs'.trParams(<String, String>{
-                        'count': '${controller.visibleSongs.length}',
+                        'count': '${displayedSongs.length}',
                       }),
+                trailing: _HideRecordingsToggle(
+                  value: hideRecordings,
+                  onChanged: controller.setHideRecordings,
+                ),
               ),
             ),
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate((
-                BuildContext context,
-                int index,
-              ) {
-                final SongModel song = controller.visibleSongs[index];
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: SongListItem(
-                    key: ValueKey<String>('home-song-${song.id}'),
-                    song: song,
-                    onTap: () => controller.playSong(song),
-                    onFavoriteToggle: () => controller.toggleFavorite(song),
-                  ),
-                );
-              }, childCount: controller.visibleSongs.length),
+          if (displayedSongs.isEmpty)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+              sliver: SliverToBoxAdapter(
+                child: _HomeEmptyStateCard(
+                  icon: Icons.keyboard_voice_rounded,
+                  title: 'No songs match this filter'.tr,
+                  message:
+                      'Turn off Hide voice recordings to show every track again.'
+                          .tr,
+                ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate((
+                  BuildContext context,
+                  int index,
+                ) {
+                  final SongModel song = displayedSongs[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: SongListItem(
+                      key: ValueKey<String>('home-song-${song.id}'),
+                      song: song,
+                      onTap: () =>
+                          controller.playSongFromQueue(displayedSongs, song),
+                      onFavoriteToggle: () => controller.toggleFavorite(song),
+                    ),
+                  );
+                }, childCount: displayedSongs.length),
+              ),
             ),
-          ),
         ],
       );
     });
@@ -266,11 +295,13 @@ class _HomeContentHeader extends StatelessWidget {
     required this.title,
     required this.description,
     required this.countLabel,
+    this.trailing,
   });
 
   final String title;
   final String description;
   final String countLabel;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -295,6 +326,15 @@ class _HomeContentHeader extends StatelessWidget {
             ),
           ),
         );
+        Widget buildTrailingGroup(WrapAlignment alignment) {
+          return Wrap(
+            alignment: alignment,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[countChip, if (trailing != null) trailing!],
+          );
+        }
 
         if (constraints.maxWidth < 430) {
           return Column(
@@ -320,7 +360,7 @@ class _HomeContentHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              countChip,
+              buildTrailingGroup(WrapAlignment.start),
             ],
           );
         }
@@ -355,10 +395,70 @@ class _HomeContentHeader extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Flexible(child: countChip),
+            Flexible(child: buildTrailingGroup(WrapAlignment.end)),
           ],
         );
       },
+    );
+  }
+}
+
+class _HideRecordingsToggle extends StatelessWidget {
+  const _HideRecordingsToggle({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.only(
+          start: 4,
+          end: 12,
+          top: 4,
+          bottom: 4,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: Checkbox(
+                value: value,
+                onChanged: (bool? nextValue) => onChanged(nextValue ?? false),
+                activeColor: theme.colorScheme.secondary,
+                checkColor: theme.colorScheme.onPrimary,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                side: BorderSide(
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.36),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Hide voice recordings'.tr,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.72),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

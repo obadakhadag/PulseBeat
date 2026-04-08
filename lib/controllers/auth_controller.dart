@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
 import '../core/enums/app_mode.dart';
@@ -11,7 +12,7 @@ import '../routes/app_pages.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
 
-class AuthController extends GetxController {
+class AuthController extends GetxController with WidgetsBindingObserver {
   AuthController({
     required AppController appController,
     required AuthService authService,
@@ -29,9 +30,13 @@ class AuthController extends GetxController {
   final RxBool isLoading = false.obs;
   final RxBool isProfileLoading = false.obs;
   final RxBool isUpdatingPrivacy = false.obs;
+  final RxBool isUpdatingPresencePrivacy = false.obs;
   final RxBool isUpdatingPhoto = false.obs;
 
   StreamSubscription<User?>? _authSubscription;
+  String? _presenceUid;
+  String? _lastPresenceWriteUid;
+  bool? _lastPresenceWriteOnline;
 
   User? get currentUser => user.value;
   String get displayName => userProfile.value?.displayName ?? 'No display name';
@@ -40,6 +45,8 @@ class AuthController extends GetxController {
   String get username => userProfile.value?.username ?? '';
   String get bio => userProfile.value?.bio ?? '';
   bool get isPrivate => userProfile.value?.isPrivate ?? false;
+  bool get showOnlineStatus => userProfile.value?.showOnlineStatus ?? true;
+  bool get showFollowingList => userProfile.value?.showFollowingList ?? true;
   int get followersCount => userProfile.value?.followersCount ?? 0;
   int get followingCount => userProfile.value?.followingCount ?? 0;
   String? get uid => user.value?.uid;
@@ -48,9 +55,11 @@ class AuthController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
     user.value = _authService.currentUser;
     if (user.value != null) {
       unawaited(loadProfile());
+      unawaited(_setCurrentUserOnline(true));
     }
 
     _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
@@ -58,11 +67,36 @@ class AuthController extends GetxController {
     ) {
       user.value = firebaseUser;
       if (firebaseUser == null) {
+        final String? previousUid = _presenceUid;
+        if (previousUid != null && previousUid.isNotEmpty) {
+          unawaited(_setOnlineStatus(previousUid, false));
+        }
+        _presenceUid = null;
         userProfile.value = null;
       } else {
         unawaited(loadProfile());
+        unawaited(_setCurrentUserOnline(true));
       }
     });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_appController.isOnline) {
+      return;
+    }
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_setCurrentUserOnline(true));
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        unawaited(_setCurrentUserOnline(false));
+        break;
+    }
   }
 
   Future<void> loginWithGoogle() async {
@@ -155,6 +189,38 @@ class AuthController extends GetxController {
     }
   }
 
+  Future<void> updateShowOnlineStatus(bool value) async {
+    if (isUpdatingPresencePrivacy.value) {
+      return;
+    }
+
+    isUpdatingPresencePrivacy.value = true;
+    try {
+      await _userService.updateOnlineVisibility(value);
+      await loadProfile();
+    } catch (_) {
+      Get.snackbar('Error', 'Failed to update privacy setting.');
+    } finally {
+      isUpdatingPresencePrivacy.value = false;
+    }
+  }
+
+  Future<void> updateShowFollowingList(bool value) async {
+    if (isUpdatingPresencePrivacy.value) {
+      return;
+    }
+
+    isUpdatingPresencePrivacy.value = true;
+    try {
+      await _userService.updateFollowingListVisibility(value);
+      await loadProfile();
+    } catch (_) {
+      Get.snackbar('Error', 'Failed to update privacy setting.');
+    } finally {
+      isUpdatingPresencePrivacy.value = false;
+    }
+  }
+
   Future<void> updateBio(String bio) async {
     final String? currentUid = uid;
     if (currentUid == null || currentUid.isEmpty) {
@@ -212,6 +278,7 @@ class AuthController extends GetxController {
 
     isLoading.value = true;
     try {
+      await _setCurrentUserOnline(false);
       await _authService.logout();
       user.value = null;
       userProfile.value = null;
@@ -226,6 +293,8 @@ class AuthController extends GetxController {
   @override
   void onClose() {
     _authSubscription?.cancel();
+    unawaited(_setCurrentUserOnline(false));
+    WidgetsBinding.instance.removeObserver(this);
     super.onClose();
   }
 
@@ -233,6 +302,7 @@ class AuthController extends GetxController {
     await _appController.setAppMode(AppMode.online);
     user.value = firebaseUser;
     userProfile.value = await _userService.ensureUserProfile(firebaseUser);
+    await _setCurrentUserOnline(true);
     Get.offAllNamed(AppPages.home);
   }
 
@@ -241,10 +311,45 @@ class AuthController extends GetxController {
       return;
     }
 
+    await _setCurrentUserOnline(false);
     user.value = null;
     userProfile.value = null;
     await _appController.setAppMode(AppMode.offline);
     Get.offAllNamed(AppPages.home);
+  }
+
+  Future<void> _setCurrentUserOnline(bool isOnline) async {
+    if (isOnline && !_appController.isOnline) {
+      return;
+    }
+    final String? currentUid = user.value?.uid.trim();
+    if (currentUid == null || currentUid.isEmpty) {
+      return;
+    }
+    await _setOnlineStatus(currentUid, isOnline);
+  }
+
+  Future<void> _setOnlineStatus(String uid, bool isOnline) async {
+    final String normalizedUid = uid.trim();
+    if (normalizedUid.isEmpty) {
+      return;
+    }
+    if (_lastPresenceWriteUid == normalizedUid &&
+        _lastPresenceWriteOnline == isOnline) {
+      return;
+    }
+
+    try {
+      await _userService.updateOnlineStatus(
+        uid: normalizedUid,
+        isOnline: isOnline,
+      );
+      _presenceUid = isOnline ? normalizedUid : null;
+      _lastPresenceWriteUid = normalizedUid;
+      _lastPresenceWriteOnline = isOnline;
+    } catch (_) {
+      // Presence is a best-effort signal; authentication should not fail on it.
+    }
   }
 
   Future<void> _runEmailAuth({
